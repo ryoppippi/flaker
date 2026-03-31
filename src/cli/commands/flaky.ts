@@ -1,0 +1,64 @@
+import type { MetricStore, FlakyScore, FlakyQueryOpts } from "../storage/types.js";
+
+export interface FlakyOpts {
+  store: MetricStore;
+  top?: number;
+  suite?: string;
+  testName?: string;
+  windowDays?: number;
+}
+
+export async function runFlaky(opts: FlakyOpts): Promise<FlakyScore[]> {
+  const queryOpts: FlakyQueryOpts = {
+    top: opts.top,
+    suite: opts.suite,
+    testName: opts.testName,
+    windowDays: opts.windowDays,
+  };
+
+  let results = await opts.store.queryFlakyTests(queryOpts);
+
+  if (opts.testName) {
+    results = results.filter((r) => r.testName === opts.testName);
+  }
+  if (opts.suite) {
+    results = results.filter((r) => r.suite === opts.suite);
+  }
+  if (opts.top) {
+    results = results.slice(0, opts.top);
+  }
+
+  return results;
+}
+
+export function formatFlakyTable(results: FlakyScore[]): string {
+  if (results.length === 0) {
+    return "No flaky tests found.";
+  }
+
+  const headers = ["Suite", "Test Name", "Flaky Rate", "Total Runs", "Fail Count", "Last Flaky At"];
+  const rows = results.map((r) => [
+    r.suite,
+    r.testName,
+    `${r.flakyRate}%`,
+    String(r.totalRuns),
+    String(r.failCount),
+    r.lastFlakyAt ? r.lastFlakyAt.toISOString() : "N/A",
+  ]);
+
+  return formatTable(headers, rows);
+}
+
+function formatTable(headers: string[], rows: string[][]): string {
+  const allRows = [headers, ...rows];
+  const colWidths = headers.map((_, i) =>
+    Math.max(...allRows.map((row) => (row[i] ?? "").length)),
+  );
+
+  const sep = colWidths.map((w) => "-".repeat(w)).join(" | ");
+  const formatRow = (row: string[]) =>
+    row.map((cell, i) => cell.padEnd(colWidths[i])).join(" | ");
+
+  const lines = [formatRow(headers), sep, ...rows.map(formatRow)];
+  return lines.join("\n");
+}
