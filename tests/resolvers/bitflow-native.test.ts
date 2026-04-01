@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { loadCore } from "../../src/cli/core/loader.js";
 
 describe("BitflowNativeResolver", () => {
@@ -56,5 +56,45 @@ describe("BitflowNativeResolver", () => {
     const allTestFiles = new Set(["test-auth"]);
     const filtered = affectedTargets.filter(t => allTestFiles.has(t));
     expect(filtered).toEqual(["test-auth"]);
+  });
+
+  it("supports multi-line task definitions in TS fallback parser", async () => {
+    const core = await loadCore();
+    const workflow = [
+      'workflow(name="ci")',
+      'node(id="auth", depends_on=[])',
+      "task(",
+      '  id="test-auth",',
+      '  node="auth",',
+      '  cmd="test",',
+      '  needs=[],',
+      '  srcs=["src/auth/**"]',
+      ")",
+    ].join("\n");
+
+    const result = core.resolveAffected(workflow, ["src/auth/login.ts"]);
+    expect(result).toContain("test-auth");
+  });
+
+  it("supports single-quoted workflow values in TS fallback parser", async () => {
+    const core = await loadCore();
+    const workflow = [
+      "workflow(name='ci')",
+      "node(id='auth', depends_on=[])",
+      "task(id='test-auth', node='auth', cmd='test', needs=[], srcs=['src/auth/**'])",
+    ].join("\n");
+    const result = core.resolveAffected(workflow, ["src/auth/login.ts"]);
+    expect(result).toContain("test-auth");
+  });
+
+  it("matches changed paths with Windows separators", async () => {
+    const core = await loadCore();
+    const workflow = [
+      'workflow(name="ci")',
+      'node(id="auth", depends_on=[])',
+      'task(id="test-auth", node="auth", cmd="test", needs=[], srcs=["src/auth/**"])',
+    ].join("\n");
+    const result = core.resolveAffected(workflow, ["src\\auth\\login.ts"]);
+    expect(result).toContain("test-auth");
   });
 });

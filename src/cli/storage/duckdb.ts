@@ -1,4 +1,3 @@
-import duckdb from "duckdb";
 import { SCHEMA_DDL, FLAKY_QUERY } from "./schema.js";
 import type {
   MetricStore,
@@ -13,8 +12,8 @@ import type {
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
-  private db: duckdb.Database | null = null;
-  private conn: duckdb.Connection | null = null;
+  private db: DuckDBDatabase | null = null;
+  private conn: DuckDBConnection | null = null;
   private dbPath: string;
 
   constructor(dbPath: string) {
@@ -22,14 +21,40 @@ export class DuckDBStore implements MetricStore {
   }
 
   async initialize(): Promise<void> {
-    this.db = await new Promise<duckdb.Database>((resolve, reject) => {
-      const db = new duckdb.Database(this.dbPath, (err: any) => {
-        if (err) reject(err);
-        else resolve(db);
-      });
+    let duckdb: DuckDBModule;
+    try {
+      duckdb = await this.loadDuckDBModule();
+    } catch (error) {
+      throw this.buildDuckDBLoadError(error);
+    }
+    this.db = await new Promise<DuckDBDatabase>((resolve, reject) => {
+      try {
+        const db = new duckdb.Database(this.dbPath, (err: any) => {
+          if (err) reject(err);
+          else resolve(db);
+        });
+      } catch (err) {
+        reject(err);
+      }
     });
     this.conn = this.db.connect();
     await this.exec(SCHEMA_DDL);
+  }
+
+  private async loadDuckDBModule(): Promise<DuckDBModule> {
+    const mod = (await import("duckdb")) as unknown as { default?: DuckDBModule } & DuckDBModule;
+    return mod.default ?? mod;
+  }
+
+  private buildDuckDBLoadError(error: unknown): Error {
+    return new Error(
+      [
+        "Failed to load DuckDB native binding.",
+        "Install/rebuild dependencies and ensure the runtime can load native modules.",
+        "Try: npm_config_nodedir=$(dirname $(dirname $(which node))) pnpm rebuild duckdb",
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+      ].join(" ")
+    );
   }
 
   async close(): Promise<void> {
@@ -277,3 +302,18 @@ export class DuckDBStore implements MetricStore {
     });
   }
 }
+
+type DuckDBModule = {
+  Database: new (...args: unknown[]) => DuckDBDatabase;
+};
+
+type DuckDBDatabase = {
+  connect: () => DuckDBConnection;
+  close: (callback: (err: unknown) => void) => void;
+};
+
+type DuckDBConnection = {
+  all: (sql: string, ...params: unknown[]) => void;
+  run: (sql: string, ...params: unknown[]) => void;
+  exec: (sql: string, callback: (err: unknown) => void) => void;
+};
