@@ -42,6 +42,12 @@ jobs:
         if: matrix.moonbit_mode == 'with_moonbit_build'
         run: moon version
 
+      - name: Update MoonBit registry
+        if: matrix.moonbit_mode == 'with_moonbit_build'
+        run: |
+          cd src/core
+          moon update
+
       - name: Prepare no-MoonBit-build mode
         if: matrix.moonbit_mode == 'without_moonbit_build'
         run: rm -rf src/core/_build
