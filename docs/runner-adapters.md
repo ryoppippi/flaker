@@ -275,6 +275,84 @@ interface TestId {
 
 `suite` と `testName` の組み合わせでテストケースを一意に特定します。同じテスト名が異なるスイートに存在しても区別できます。
 
+## 実行モデル: バッチとオーケストレーション
+
+テスト数が多い場合、metrici のオーケストレーターがランナーの特性に応じて実行を最適化します。
+
+### Runner Capabilities
+
+各ランナーは自分の並列化能力を宣言します:
+
+| ランナー | `nativeParallel` | `maxBatchSize` | 動作 |
+|---------|-----------------|---------------|------|
+| Vitest | `true` | - | metrici は全テストを 1 回の execute で渡す。vitest が `--pool=threads` で内部並列化 |
+| Playwright | `true` | - | metrici は全テストを 1 回の execute で渡す。playwright が `--workers` で内部並列化 |
+| MoonBit | `false` | 50 | metrici が 50 件ずつバッチ分割して実行 |
+| Custom | `false` | - | metrici がバッチ分割して実行 |
+
+### 実行オプション
+
+```bash
+# Vitest: 4 workers で並列実行（ランナー内部の並列化）
+metrici run --strategy hybrid --count 100 --workers 4
+
+# MoonBit: 50件ずつ 2 並列でバッチ実行（metrici がシャード）
+metrici run --strategy random --count 200 --concurrency 2
+
+# バッチサイズを明示的に指定
+metrici run --strategy weighted --count 100 --batch-size 25 --concurrency 4
+```
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--workers N` | ランナー内部の並列ワーカー数（`nativeParallel: true` のランナーに渡される） | ランナーのデフォルト |
+| `--concurrency N` | metrici がバッチを並列実行する数 | 1（シーケンシャル） |
+| `--batch-size N` | 1 回の execute に渡すテスト数の上限 | ランナーの `maxBatchSize` または全件 |
+
+### 動作フロー
+
+```
+metrici run --count 100 --concurrency 2 --batch-size 30
+
+nativeParallel = true の場合:
+  → execute(100 tests, { workers })      ※1回で全部渡す
+  → ランナーが内部で並列実行
+
+nativeParallel = false, maxBatchSize = 30 の場合:
+  → batch 1: execute(tests[0:30])  ─┐
+  → batch 2: execute(tests[30:60]) ─┤ 並列 (concurrency=2)
+                                     ↓ 完了待ち
+  → batch 3: execute(tests[60:90]) ─┐
+  → batch 4: execute(tests[90:100])─┤ 並列
+                                     ↓
+  → 結果をマージ
+```
+
+### crater (Playwright + BiDi) での注意
+
+crater の Playwright テストは BiDi サーバーを共有するため `workers: 1` が必須です。metrici 側でのシャーディング（`--concurrency`）も使えません:
+
+```toml
+# crater の metrici.toml
+[runner]
+type = "playwright"
+command = "pnpm exec playwright test"
+# workers, concurrency は指定しない（デフォルト = シーケンシャル）
+```
+
+### カスタムアダプタでの capabilities 宣言
+
+カスタムアダプタの場合、設定で capabilities を宣言できます:
+
+```toml
+[runner]
+type = "custom"
+execute = "node ./my-runner.js execute"
+list = "node ./my-runner.js list"
+native_parallel = true      # ランナーが内部で並列化する場合
+max_batch_size = 100         # 1回の execute の上限
+```
+
 ## metrici との統合フロー
 
 ```
@@ -283,7 +361,8 @@ metrici sample --strategy hybrid --count 20
 
 metrici run --strategy hybrid --count 20
   → sample で TestId[] を選択
-  → RunnerAdapter.execute(TestId[]) で実行
+  → orchestrate(runner, TestId[], opts) で実行戦略を決定
+  → RunnerAdapter.execute() を適切にバッチ/並列実行
   → ExecuteResult.results を DB に自動格納
   → metrici eval で健全性評価
 ```
