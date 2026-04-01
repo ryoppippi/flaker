@@ -74,8 +74,8 @@ function detectFlaky(input: DetectInput): DetectOutput {
   const flaky_tests: FlakyResult[] = [];
   for (const g of groups.values()) {
     if (g.total < input.min_runs) continue;
-    const flaky_rate = (g.fails / g.total) * 100;
-    if (flaky_rate <= input.threshold) continue;
+    const flaky_rate = ((g.fails + g.flaky_retries) / g.total) * 100;
+    if (flaky_rate < input.threshold) continue;
     flaky_tests.push({
       suite: g.suite,
       test_name: g.test_name,
