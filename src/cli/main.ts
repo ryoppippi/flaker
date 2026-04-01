@@ -12,6 +12,7 @@ import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend } from "./c
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import { ActrunRunner } from "./runners/actrun.js";
+import { runBisect } from "./commands/bisect.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
@@ -288,5 +289,33 @@ program
       }
     },
   );
+
+// --- bisect ---
+program
+  .command("bisect")
+  .description("Find commit range where a test became flaky")
+  .requiredOption("--test <name>", "Test name")
+  .option("--suite <suite>", "Suite (file path)")
+  .action(async (opts: { test: string; suite?: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+
+    try {
+      const result = await runBisect({
+        store,
+        suite: opts.suite ?? "",
+        testName: opts.test,
+      });
+      if (result) {
+        console.log(`Last good commit: ${result.lastGoodCommit} (${result.lastGoodDate.toISOString()})`);
+        console.log(`First bad commit: ${result.firstBadCommit} (${result.firstBadDate.toISOString()})`);
+      } else {
+        console.log("No transition found.");
+      }
+    } finally {
+      await store.close();
+    }
+  });
 
 program.parse();
