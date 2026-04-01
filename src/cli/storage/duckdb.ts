@@ -6,6 +6,7 @@ import type {
   TestResult,
   FlakyScore,
   FlakyQueryOpts,
+  QuarantinedTest,
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
@@ -120,6 +121,46 @@ export class DuckDBStore implements MetricStore {
 
   async raw<T = unknown>(sql: string, params?: unknown[]): Promise<T[]> {
     return this.all(sql, params ?? []) as Promise<T[]>;
+  }
+
+  async addQuarantine(
+    suite: string,
+    testName: string,
+    reason: string,
+  ): Promise<void> {
+    await this.run(
+      `INSERT INTO quarantined_tests (suite, test_name, reason)
+       VALUES (?, ?, ?)
+       ON CONFLICT (suite, test_name) DO UPDATE SET reason = EXCLUDED.reason`,
+      [suite, testName, reason],
+    );
+  }
+
+  async removeQuarantine(suite: string, testName: string): Promise<void> {
+    await this.run(
+      `DELETE FROM quarantined_tests WHERE suite = ? AND test_name = ?`,
+      [suite, testName],
+    );
+  }
+
+  async queryQuarantined(): Promise<QuarantinedTest[]> {
+    const rows = await this.all(
+      `SELECT suite, test_name, reason, created_at FROM quarantined_tests ORDER BY created_at DESC`,
+    );
+    return rows.map((row: any) => ({
+      suite: row.suite,
+      testName: row.test_name,
+      reason: row.reason,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async isQuarantined(suite: string, testName: string): Promise<boolean> {
+    const rows = await this.all(
+      `SELECT 1 FROM quarantined_tests WHERE suite = ? AND test_name = ?`,
+      [suite, testName],
+    );
+    return rows.length > 0;
   }
 
   // Private helpers

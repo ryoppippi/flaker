@@ -12,6 +12,10 @@ import { runFlaky, formatFlakyTable } from "./commands/flaky.js";
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
+import {
+  runQuarantine,
+  formatQuarantineTable,
+} from "./commands/quarantine.js";
 import { DuckDBStore } from "./storage/duckdb.js";
 
 const program = new Command();
@@ -196,5 +200,73 @@ program
       await store.close();
     }
   });
+
+// --- quarantine ---
+program
+  .command("quarantine")
+  .description("Manage quarantined tests")
+  .option("--add <suite:testName>", "Add a test to quarantine (suite:testName)")
+  .option(
+    "--remove <suite:testName>",
+    "Remove a test from quarantine (suite:testName)",
+  )
+  .option("--auto", "Auto-quarantine tests exceeding flaky threshold")
+  .action(
+    async (opts: { add?: string; remove?: string; auto?: boolean }) => {
+      const config = loadConfig(process.cwd());
+      const store = new DuckDBStore(resolve(config.storage.path));
+      await store.initialize();
+
+      try {
+        if (opts.add) {
+          const [suite, testName] = opts.add.split(":");
+          if (!suite || !testName) {
+            console.error("Error: --add requires format suite:testName");
+            process.exit(1);
+          }
+          await runQuarantine({
+            store,
+            action: "add",
+            suite,
+            testName,
+            reason: "manual",
+          });
+          console.log(`Quarantined ${suite}:${testName}`);
+        } else if (opts.remove) {
+          const [suite, testName] = opts.remove.split(":");
+          if (!suite || !testName) {
+            console.error("Error: --remove requires format suite:testName");
+            process.exit(1);
+          }
+          await runQuarantine({ store, action: "remove", suite, testName });
+          console.log(`Removed ${suite}:${testName} from quarantine`);
+        } else if (opts.auto) {
+          await runQuarantine({
+            store,
+            action: "auto",
+            flakyRateThreshold:
+              config.quarantine.flaky_rate_threshold * 100,
+            minRuns: config.quarantine.min_runs,
+          });
+          const quarantined = await store.queryQuarantined();
+          console.log(
+            `Auto-quarantine complete. ${quarantined.length} test(s) quarantined.`,
+          );
+          if (quarantined.length > 0) {
+            console.log(formatQuarantineTable(quarantined));
+          }
+        } else {
+          const result = await runQuarantine({ store, action: "list" });
+          if (result && result.length > 0) {
+            console.log(formatQuarantineTable(result));
+          } else {
+            console.log("No quarantined tests.");
+          }
+        }
+      } finally {
+        await store.close();
+      }
+    },
+  );
 
 program.parse();

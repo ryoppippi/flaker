@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS test_results (
 );
 
 CREATE SEQUENCE IF NOT EXISTS test_results_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS quarantined_tests (
+  suite       VARCHAR NOT NULL,
+  test_name   VARCHAR NOT NULL,
+  reason      VARCHAR NOT NULL DEFAULT 'manual',
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (suite, test_name)
+);
 `;
 
 export const FLAKY_QUERY = `
