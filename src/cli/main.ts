@@ -11,6 +11,7 @@ import {
 import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend } from "./commands/flaky.js";
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
+import { ActrunRunner } from "./runners/actrun.js";
 import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
@@ -170,13 +171,26 @@ program
   .option("--strategy <s>", "Sampling strategy: random or weighted", "random")
   .option("--count <n>", "Number of tests to run")
   .option("--percentage <n>", "Percentage of tests to run")
+  .option("--runner <runner>", "Runner type: direct or actrun", "direct")
+  .option("--retry", "Retry failed tests (actrun only)")
   .action(
-    async (opts: { strategy: string; count?: string; percentage?: string }) => {
+    async (opts: { strategy: string; count?: string; percentage?: string; runner: string; retry?: boolean }) => {
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
       try {
+        if (opts.runner === "actrun") {
+          const actRunner = new ActrunRunner({
+            workflow: config.runner.command,
+          });
+          if (opts.retry) {
+            actRunner.retry();
+          } else {
+            actRunner.run("");
+          }
+          return;
+        }
         await runTests({
           store,
           command: config.runner.command,
