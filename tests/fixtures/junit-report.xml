@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="tests/login.spec.ts" tests="4" failures="1" errors="0" skipped="1" time="5.2">
+    <testcase name="should display form" classname="tests.login" time="1.2">
+    </testcase>
+    <testcase name="should redirect after login" classname="tests.login" time="2.0">
+      <failure message="Timeout waiting for element">Expected element to be visible</failure>
+    </testcase>
+    <testcase name="should show help text" classname="tests.login" time="1.5">
+    </testcase>
+    <testcase name="should skip on mobile" classname="tests.login" time="0">
+      <skipped message="Not applicable on mobile"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="tests/home.spec.ts" tests="1" failures="0" errors="0" time="0.5">
+    <testcase name="should load homepage" classname="tests.home" time="0.5">
+    </testcase>
+  </testsuite>
+</testsuites>

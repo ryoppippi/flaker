@@ -1,3 +1,4 @@
+import { junitAdapter } from "../adapters/junit.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
 import type { TestResultAdapter } from "../adapters/types.js";
 import type { MetricStore, WorkflowRun, TestResult } from "../storage/types.js";
@@ -40,6 +41,8 @@ function getAdapter(adapterType: string): TestResultAdapter {
   switch (adapterType) {
     case "playwright":
       return playwrightAdapter;
+    case "junit":
+      return junitAdapter;
     default:
       throw new Error(`Unknown adapter type: ${adapterType}`);
   }
