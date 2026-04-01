@@ -6,7 +6,13 @@ export interface MetriciConfig {
   repo: { owner: string; name: string };
   storage: { path: string };
   adapter: { type: string; command?: string };
-  runner: { default: string; command: string; actrun?: { workflow: string } };
+  runner: {
+    type: string;
+    command: string;
+    execute?: string;
+    list?: string;
+    actrun?: { workflow: string };
+  };
   affected: { resolver: string; config: string };
   quarantine: { auto: boolean; flaky_rate_threshold: number; min_runs: number };
   flaky: { window_days: number; detection_threshold: number };
@@ -16,7 +22,7 @@ const DEFAULT_CONFIG: MetriciConfig = {
   repo: { owner: "", name: "" },
   storage: { path: ".metrici/data" },
   adapter: { type: "command" },
-  runner: { default: "command", command: "pnpm test" },
+  runner: { type: "vitest", command: "pnpm test" },
   affected: { resolver: "git", config: "" },
   quarantine: { auto: true, flaky_rate_threshold: 0.3, min_runs: 5 },
   flaky: { window_days: 14, detection_threshold: 0.1 },

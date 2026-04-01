@@ -43,7 +43,7 @@ describe("loadConfig", () => {
     expect(config.repo.name).toBe("testrepo");
     expect(config.storage.path).toBe(".metrici/data");
     expect(config.adapter.type).toBe("command");
-    expect(config.runner.default).toBe("command");
+    expect(config.runner.type).toBe("vitest");
     expect(config.quarantine.auto).toBe(true);
     expect(config.flaky.window_days).toBe(14);
   });

@@ -13,7 +13,7 @@ path = ".metrici/data"
 type = "command"
 
 [runner]
-default = "command"
+type = "vitest"
 command = "pnpm test"
 
 [affected]
