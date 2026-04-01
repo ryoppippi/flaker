@@ -13,6 +13,7 @@ options(
         "detect_flaky_json",
         "sample_random_json",
         "sample_weighted_json",
+        "sample_hybrid_json",
       ],
       "format": "esm",
     },

@@ -1,13 +1,16 @@
 import type { MetricStore } from "../storage/types.js";
 import type { TestMeta, MetriciCore } from "../core/loader.js";
+import type { DependencyResolver } from "../resolvers/types.js";
 import { loadCore } from "../core/loader.js";
 
 export interface SampleOpts {
   store: MetricStore;
   count?: number;
   percentage?: number;
-  mode: "random" | "weighted";
+  mode: "random" | "weighted" | "affected" | "hybrid";
   seed?: number;
+  resolver?: DependencyResolver;
+  changedFiles?: string[];
 }
 
 export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
@@ -22,6 +25,24 @@ export async function runSample(opts: SampleOpts): Promise<TestMeta[]> {
   }
 
   const seed = opts.seed ?? Date.now();
+
+  if (opts.mode === "affected") {
+    if (!opts.resolver || !opts.changedFiles) {
+      throw new Error("affected mode requires resolver and changedFiles");
+    }
+    const allSuites = allTests.map((t) => t.suite);
+    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
+    return allTests.filter((t) => affectedSuites.includes(t.suite));
+  }
+
+  if (opts.mode === "hybrid") {
+    if (!opts.resolver || !opts.changedFiles) {
+      throw new Error("hybrid mode requires resolver and changedFiles");
+    }
+    const allSuites = allTests.map((t) => t.suite);
+    const affectedSuites = await opts.resolver.resolve(opts.changedFiles, allSuites);
+    return core.sampleHybrid(allTests, affectedSuites, count, seed);
+  }
 
   if (opts.mode === "weighted") {
     return core.sampleWeighted(allTests, count, seed);

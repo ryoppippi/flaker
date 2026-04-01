@@ -80,3 +80,64 @@ pub fn sample_weighted(
   }
   selected
 }
+
+///|
+pub fn sample_hybrid(
+  meta : Array[@types.TestMeta],
+  affected_suites~ : Array[String],
+  count~ : Int,
+  seed~ : UInt64
+) -> Array[@types.TestMeta] {
+  let affected_set : Map[String, Bool] = {}
+  for s in affected_suites {
+    affected_set.set(s, true)
+  }
+
+  let selected : Array[@types.TestMeta] = []
+  let used : Map[Int, Bool] = {}
+
+  // Priority 1: affected tests
+  for i, m in meta {
+    if affected_set.contains(m.suite) && !used.contains(i) {
+      selected.push(m)
+      used.set(i, true)
+    }
+  }
+
+  // Priority 2: previously failed tests
+  for i, m in meta {
+    if m.previously_failed && !used.contains(i) {
+      selected.push(m)
+      used.set(i, true)
+    }
+  }
+
+  // Priority 3: new tests
+  for i, m in meta {
+    if m.is_new && !used.contains(i) {
+      selected.push(m)
+      used.set(i, true)
+    }
+  }
+
+  // Priority 4: fill remaining with weighted random
+  if selected.length() < count {
+    let remaining : Array[@types.TestMeta] = []
+    for i, m in meta {
+      if !used.contains(i) {
+        remaining.push(m)
+      }
+    }
+    let needed = count - selected.length()
+    let extra = sample_weighted(remaining, count=needed, seed~)
+    for m in extra {
+      selected.push(m)
+    }
+  }
+
+  if selected.length() > count {
+    Array::makei(count, fn(i) { selected[i] })
+  } else {
+    selected
+  }
+}

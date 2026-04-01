@@ -39,6 +39,7 @@ export interface MetriciCore {
   detectFlaky(input: DetectInput): DetectOutput;
   sampleRandom(meta: TestMeta[], count: number, seed: number): TestMeta[];
   sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[];
+  sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[];
 }
 
 /** LCG PRNG: returns next state and a float in [0, 1) */
@@ -138,11 +139,32 @@ function sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta
   return result;
 }
 
+function sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
+  const affectedSet = new Set(affectedSuites);
+  const selected: TestMeta[] = [];
+  const used = new Set<number>();
+
+  // Priority 1: affected
+  meta.forEach((m, i) => { if (affectedSet.has(m.suite) && !used.has(i)) { selected.push(m); used.add(i); } });
+  // Priority 2: previously failed
+  meta.forEach((m, i) => { if (m.previously_failed && !used.has(i)) { selected.push(m); used.add(i); } });
+  // Priority 3: new
+  meta.forEach((m, i) => { if (m.is_new && !used.has(i)) { selected.push(m); used.add(i); } });
+  // Priority 4: weighted random for remaining
+  if (selected.length < count) {
+    const remaining = meta.filter((_, i) => !used.has(i));
+    const extra = sampleWeighted(remaining, count - selected.length, seed);
+    selected.push(...extra);
+  }
+  return selected.slice(0, count);
+}
+
 // MoonBit JS backend types
 interface MbtJsExports {
   detect_flaky_json: (input: string) => string;
   sample_random_json: (meta: string, count: number, seed: number) => string;
   sample_weighted_json: (meta: string, count: number, seed: number) => string;
+  sample_hybrid_json: (meta: string, affected: string, count: number, seed: number) => string;
 }
 
 function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
@@ -155,6 +177,9 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
     },
     sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[] {
       return JSON.parse(mbt.sample_weighted_json(JSON.stringify(meta), count, seed));
+    },
+    sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[] {
+      return JSON.parse(mbt.sample_hybrid_json(JSON.stringify(meta), JSON.stringify(affectedSuites), count, seed));
     },
   };
 }
@@ -172,7 +197,8 @@ export async function loadCore(): Promise<MetriciCore> {
     if (
       typeof mbt.detect_flaky_json === "function" &&
       typeof mbt.sample_random_json === "function" &&
-      typeof mbt.sample_weighted_json === "function"
+      typeof mbt.sample_weighted_json === "function" &&
+      typeof mbt.sample_hybrid_json === "function"
     ) {
       cachedCore = wrapMbtCore(mbt);
       return cachedCore;
@@ -184,6 +210,7 @@ export async function loadCore(): Promise<MetriciCore> {
     detectFlaky,
     sampleRandom,
     sampleWeighted,
+    sampleHybrid,
   };
   return cachedCore;
 }
@@ -194,5 +221,6 @@ export function loadCoreSync(): MetriciCore {
     detectFlaky,
     sampleRandom,
     sampleWeighted,
+    sampleHybrid,
   };
 }

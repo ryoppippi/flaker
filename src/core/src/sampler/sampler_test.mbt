@@ -47,3 +47,21 @@ test "weighted sampling prefers flaky tests" {
   }
   assert_true(flaky_count > 50)
 }
+
+///|
+test "hybrid sampling prioritizes affected, failed, new, then weighted" {
+  let meta : Array[@types.TestMeta] = [
+    { suite: "affected.spec.ts", test_name: "affected", flaky_rate: 0.0, total_runs: 10, fail_count: 0, last_run_at: "", avg_duration_ms: 100, previously_failed: false, is_new: false },
+    { suite: "failed.spec.ts", test_name: "prev_failed", flaky_rate: 50.0, total_runs: 10, fail_count: 5, last_run_at: "", avg_duration_ms: 100, previously_failed: true, is_new: false },
+    { suite: "new.spec.ts", test_name: "new_test", flaky_rate: 0.0, total_runs: 0, fail_count: 0, last_run_at: "", avg_duration_ms: 100, previously_failed: false, is_new: true },
+    { suite: "stable.spec.ts", test_name: "stable", flaky_rate: 0.0, total_runs: 100, fail_count: 0, last_run_at: "", avg_duration_ms: 100, previously_failed: false, is_new: false },
+    { suite: "flaky.spec.ts", test_name: "flaky", flaky_rate: 80.0, total_runs: 100, fail_count: 80, last_run_at: "", avg_duration_ms: 100, previously_failed: false, is_new: false },
+  ]
+  let affected_suites = ["affected.spec.ts"]
+  let result = @sampler.sample_hybrid(meta, affected_suites~, count=4, seed=42UL)
+  assert_eq(result.length(), 4)
+  let suites = result.map(fn(m) { m.suite })
+  assert_true(suites.contains("affected.spec.ts"))
+  assert_true(suites.contains("failed.spec.ts"))
+  assert_true(suites.contains("new.spec.ts"))
+}

@@ -37,3 +37,11 @@ pub fn sample_weighted_json(
   let result = @sampler.sample_weighted(meta, count~, seed=seed.to_uint64())
   result.to_json().stringify()
 }
+
+///|
+pub fn sample_hybrid_json(meta_json : String, affected_json : String, count : Int, seed : Int) -> String {
+  let meta : Array[@types.TestMeta] = try! @json.from_json(try! @json.parse(meta_json))
+  let affected : Array[String] = try! @json.from_json(try! @json.parse(affected_json))
+  let result = @sampler.sample_hybrid(meta, affected_suites=affected, count~, seed=seed.to_uint64())
+  result.to_json().stringify()
+}
