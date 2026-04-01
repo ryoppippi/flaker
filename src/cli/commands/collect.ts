@@ -1,3 +1,4 @@
+import { CustomAdapter } from "../adapters/custom.js";
 import { junitAdapter } from "../adapters/junit.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
 import type { TestResultAdapter } from "../adapters/types.js";
@@ -30,6 +31,7 @@ export interface CollectOpts {
   repo: string;
   adapterType: string;
   artifactName?: string;
+  customCommand?: string;
 }
 
 export interface CollectResult {
@@ -37,12 +39,17 @@ export interface CollectResult {
   testsCollected: number;
 }
 
-function getAdapter(adapterType: string): TestResultAdapter {
+function getAdapter(adapterType: string, customCommand?: string): TestResultAdapter {
   switch (adapterType) {
     case "playwright":
       return playwrightAdapter;
     case "junit":
       return junitAdapter;
+    case "custom":
+      if (!customCommand) {
+        throw new Error("Custom adapter requires a command (customCommand)");
+      }
+      return new CustomAdapter({ command: customCommand });
     default:
       throw new Error(`Unknown adapter type: ${adapterType}`);
   }
@@ -57,9 +64,10 @@ export async function collectWorkflowRuns(
     repo,
     adapterType,
     artifactName = "playwright-report",
+    customCommand,
   } = opts;
 
-  const adapter = getAdapter(adapterType);
+  const adapter = getAdapter(adapterType, customCommand);
   const { workflow_runs } = await github.listWorkflowRuns();
 
   let runsCollected = 0;
