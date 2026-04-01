@@ -8,7 +8,7 @@ import {
   collectWorkflowRuns,
   type GitHubClient,
 } from "./commands/collect.js";
-import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend } from "./commands/flaky.js";
+import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
 import { runSample } from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import { ActrunRunner } from "./runners/actrun.js";
@@ -114,12 +114,21 @@ program
   .option("--top <n>", "Number of top flaky tests to show")
   .option("--test <filter>", "Filter by test name")
   .option("--trend", "Show weekly flaky trend (requires --test)")
-  .action(async (opts: { top?: string; test?: string; trend?: boolean }) => {
+  .option("--true-flaky", "Show true flaky tests (same commit with both pass and fail)")
+  .action(async (opts: { top?: string; test?: string; trend?: boolean; trueFlaky?: boolean }) => {
     const config = loadConfig(process.cwd());
     const store = new DuckDBStore(resolve(config.storage.path));
     await store.initialize();
 
     try {
+      if (opts.trueFlaky) {
+        const results = await runTrueFlaky({
+          store,
+          top: opts.top ? Number(opts.top) : undefined,
+        });
+        console.log(formatTrueFlakyTable(results));
+        return;
+      }
       if (opts.trend && opts.test) {
         const entries = await runFlakyTrend({ store, suite: "", testName: opts.test });
         console.log(formatFlakyTrend(entries));

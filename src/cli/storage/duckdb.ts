@@ -8,6 +8,7 @@ import type {
   FlakyQueryOpts,
   QuarantinedTest,
   TrendEntry,
+  TrueFlakyScore,
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
@@ -117,6 +118,35 @@ export class DuckDBStore implements MetricStore {
       commitSha: row.commit_sha,
       variant: row.variant ? JSON.parse(row.variant) : null,
       createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async queryTrueFlakyTests(opts?: { top?: number }): Promise<TrueFlakyScore[]> {
+    let sql = `
+      WITH commit_results AS (
+        SELECT
+          suite, test_name, commit_sha,
+          COUNT(DISTINCT status) FILTER (WHERE status IN ('passed', 'failed')) AS distinct_statuses
+        FROM test_results
+        GROUP BY suite, test_name, commit_sha
+      )
+      SELECT
+        suite, test_name,
+        COUNT(*)::INTEGER AS commits_tested,
+        COUNT(*) FILTER (WHERE distinct_statuses > 1)::INTEGER AS flaky_commits,
+        ROUND(COUNT(*) FILTER (WHERE distinct_statuses > 1) * 100.0 / COUNT(*), 2)::DOUBLE AS true_flaky_rate
+      FROM commit_results
+      GROUP BY suite, test_name
+      HAVING flaky_commits > 0
+      ORDER BY true_flaky_rate DESC`;
+    if (opts?.top) sql += ` LIMIT ${opts.top}`;
+    const rows = await this.all(sql);
+    return rows.map((r: any) => ({
+      suite: r.suite,
+      testName: r.test_name,
+      commitsTested: r.commits_tested,
+      flakyCommits: r.flaky_commits,
+      trueFlakyRate: r.true_flaky_rate,
     }));
   }
 

@@ -50,6 +50,14 @@ export interface TrendEntry {
   flakyRate: number;
 }
 
+export interface TrueFlakyScore {
+  suite: string;
+  testName: string;
+  commitsTested: number;
+  flakyCommits: number;
+  trueFlakyRate: number;
+}
+
 export interface FlakyQueryOpts {
   top?: number;
   suite?: string;
@@ -65,6 +73,7 @@ export interface MetricStore {
   queryFlakyTests(opts: FlakyQueryOpts): Promise<FlakyScore[]>;
   queryTestHistory(suite: string, testName: string): Promise<TestResult[]>;
   queryFlakyTrend(suite: string, testName: string): Promise<TrendEntry[]>;
+  queryTrueFlakyTests(opts?: { top?: number }): Promise<TrueFlakyScore[]>;
   raw<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
   addQuarantine(suite: string, testName: string, reason: string): Promise<void>;
   removeQuarantine(suite: string, testName: string): Promise<void>;
