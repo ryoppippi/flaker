@@ -151,14 +151,16 @@ export function getScenarios(): Scenario[] {
   ];
 }
 
-export async function runSelfEval(opts: { store: MetricStore }): Promise<SelfEvalReport> {
-  const { store } = opts;
+export async function runSelfEval(opts: { createStore: () => Promise<MetricStore> }): Promise<SelfEvalReport> {
   const scenarios = getScenarios();
   const results: ScenarioResult[] = [];
   const improvements: string[] = [];
 
   for (const scenario of scenarios) {
+    // Each scenario gets a fresh isolated store to prevent cross-contamination
+    const store = await opts.createStore();
     const result = await evaluateScenario(store, scenario);
+    await store.close();
     results.push(result);
     if (!result.passed) {
       for (const issue of result.issues) {

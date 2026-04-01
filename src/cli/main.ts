@@ -480,19 +480,18 @@ program
   .description("Run self-evaluation scenarios to validate recommendation logic")
   .option("--json", "Output raw JSON report")
   .action(async (opts: { json?: boolean }) => {
-    const store = new DuckDBStore(":memory:");
-    await store.initialize();
-    try {
-      const report = await runSelfEval({ store });
-      if (opts.json) {
-        console.log(JSON.stringify(report, null, 2));
-      } else {
-        console.log(formatSelfEvalReport(report));
-      }
-      process.exit(report.overallScore >= 80 ? 0 : 1);
-    } finally {
-      await store.close();
+    const createStore = async () => {
+      const s = new DuckDBStore(":memory:");
+      await s.initialize();
+      return s;
+    };
+    const report = await runSelfEval({ createStore });
+    if (opts.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      console.log(formatSelfEvalReport(report));
     }
+    process.exit(report.overallScore >= 80 ? 0 : 1);
   });
 
 program.parse();
