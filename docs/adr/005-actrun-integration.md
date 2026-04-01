@@ -1,0 +1,58 @@
+# ADR-005: actrun 統合によるローカル CI フィードバックループ
+
+**日付:** 2026-03-31
+**ステータス:** Accepted
+
+## コンテキスト
+
+flaky test の検出精度はデータ量に依存する。GitHub Actions の結果だけでは collect のタイミングが限られ、データが不足しがち。ローカルでのテスト実行結果も蓄積できればデータ収集速度が上がる。
+
+actrun (mizchi/actrun) は GitHub Actions 互換のローカルランナーで、`--retry` による失敗箇所リトライと `--json` による構造化出力をサポートしている。
+
+## 決定
+
+actrun を metrici に深く統合し、ローカル実行結果の自動取り込みを実現する。
+
+### データ収集の 3 経路
+
+```
+Remote:  metrici collect          GitHub Actions API → zip 展開 → DuckDB
+Local:   metrici collect-local    actrun run list/view → JSON パース → DuckDB
+Local:   metrici run --runner actrun  実行 → 結果自動 import → DuckDB
+```
+
+### actrun 統合フロー
+
+```
+metrici run --runner actrun
+  ↓ actrun workflow run .github/workflows/test.yml --json
+  ↓ run ID を取得
+  ↓ actrun run view <id> --json
+  ↓ ActrunAdapter がタスクレポートをパース
+  ↓ WorkflowRun + TestResult[] を DB に自動 insert
+  ↓ eval ミニレポート表示
+```
+
+### collect-local
+
+actrun のローカル実行履歴を一括取り込み:
+
+```
+metrici collect-local --last 20
+  ↓ actrun run list --json
+  ↓ 既に DB にある run はスキップ（commitSha = "actrun-<run_id>" で判定）
+  ↓ 新規 run ごとに actrun run view <id> --json
+  ↓ パース → DB insert
+```
+
+## 根拠
+
+- actrun の JSON 出力は GitHub Actions API と互換性のあるフィールド名 (`conclusion`, `headSha`, `status`) を使っており、WorkflowRun へのマッピングが自然
+- `--retry` でローカルから失敗テストだけを再実行し、その結果も蓄積できる
+- CI を通さずにローカルで flaky テストの再現確認 → データ蓄積 → 分析のサイクルが回る
+
+## 結果
+
+- ローカル実行のたびにデータが蓄積され、eval の health score が改善していく
+- CI と ローカルの両方のデータが 1 つの DuckDB に統合される
+- `metrici bisect` がローカル実行結果も含めて分析可能
