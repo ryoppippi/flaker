@@ -1,5 +1,6 @@
 import type {
   RunnerAdapter,
+  RunnerCapabilities,
   TestId,
   ExecuteOpts,
   ExecuteResult,
@@ -20,6 +21,7 @@ export type ExecWithStdinFn = (
 
 export class CustomRunner implements RunnerAdapter {
   name = "custom";
+  capabilities: RunnerCapabilities;
   private executeCmd: string;
   private listCmd: string;
   private execFn: ExecFn;
@@ -28,9 +30,11 @@ export class CustomRunner implements RunnerAdapter {
   constructor(opts: {
     execute: string;
     list: string;
+    capabilities?: RunnerCapabilities;
     exec?: ExecFn;
     execWithStdin?: ExecWithStdinFn;
   }) {
+    this.capabilities = opts.capabilities ?? { nativeParallel: false };
     this.executeCmd = opts.execute;
     this.listCmd = opts.list;
     this.execFn = opts.exec ?? runCommand;

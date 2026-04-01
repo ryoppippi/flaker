@@ -30,7 +30,10 @@ export function createRunner(config: {
 
 export type {
   RunnerAdapter,
+  RunnerCapabilities,
   TestId,
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
+export { orchestrate } from "./orchestrator.js";
+export type { OrchestrateOpts } from "./orchestrator.js";

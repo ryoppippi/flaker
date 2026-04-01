@@ -2,6 +2,7 @@ import type { TestCaseResult } from "../adapters/types.js";
 import { playwrightAdapter } from "../adapters/playwright.js";
 import type {
   RunnerAdapter,
+  RunnerCapabilities,
   TestId,
   ExecuteOpts,
   ExecuteResult,
@@ -59,6 +60,7 @@ export function parsePlaywrightList(stdout: string): TestId[] {
 
 export class PlaywrightRunner implements RunnerAdapter {
   name = "playwright";
+  capabilities: RunnerCapabilities = { nativeParallel: true };
   private baseCommand: string;
   private execFn: ExecFn;
 
@@ -69,7 +71,8 @@ export class PlaywrightRunner implements RunnerAdapter {
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
     const pattern = tests.map((t) => escapeRegex(t.testName)).join("|");
-    const cmd = `${this.baseCommand} --grep "${pattern}" --reporter json`;
+    const workerArgs = opts?.workers ? ` --workers=${opts.workers}` : "";
+    const cmd = `${this.baseCommand} --grep "${pattern}" --reporter json${workerArgs}`;
     const start = Date.now();
     const { exitCode, stdout, stderr } = this.execFn(cmd, opts);
     const durationMs = Date.now() - start;

@@ -1,6 +1,7 @@
 import type { TestCaseResult } from "../adapters/types.js";
 import type {
   RunnerAdapter,
+  RunnerCapabilities,
   TestId,
   ExecuteOpts,
   ExecuteResult,
@@ -51,6 +52,7 @@ export function parseMoonTestList(stdout: string): TestId[] {
 
 export class MoonTestRunner implements RunnerAdapter {
   name = "moontest";
+  capabilities: RunnerCapabilities = { nativeParallel: false, maxBatchSize: 50 };
   private baseCommand: string;
   private execFn: ExecFn;
 

@@ -1,6 +1,7 @@
 import type { TestCaseResult } from "../adapters/types.js";
 import type {
   RunnerAdapter,
+  RunnerCapabilities,
   TestId,
   ExecuteOpts,
   ExecuteResult,
@@ -61,6 +62,7 @@ export function parseVitestList(stdout: string): TestId[] {
 
 export class VitestRunner implements RunnerAdapter {
   name = "vitest";
+  capabilities: RunnerCapabilities = { nativeParallel: true };
   private baseCommand: string;
   private execFn: ExecFn;
 
@@ -71,7 +73,10 @@ export class VitestRunner implements RunnerAdapter {
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
     const pattern = tests.map((t) => escapeRegex(t.testName)).join("|");
-    const cmd = `${this.baseCommand} run -t "${pattern}" --reporter json`;
+    const workerArgs = opts?.workers
+      ? ` --pool=threads --poolOptions.threads.maxThreads=${opts.workers}`
+      : "";
+    const cmd = `${this.baseCommand} run -t "${pattern}" --reporter json${workerArgs}`;
     const start = Date.now();
     const { exitCode, stdout, stderr } = this.execFn(cmd, opts);
     const durationMs = Date.now() - start;

@@ -5,11 +5,17 @@ export interface TestId {
   testName: string;
 }
 
+export interface RunnerCapabilities {
+  nativeParallel: boolean;
+  maxBatchSize?: number;
+}
+
 export interface ExecuteOpts {
   cwd?: string;
   timeout?: number;
   retries?: number;
   env?: Record<string, string>;
+  workers?: number;
 }
 
 export interface ExecuteResult {
@@ -22,6 +28,7 @@ export interface ExecuteResult {
 
 export interface RunnerAdapter {
   name: string;
+  capabilities: RunnerCapabilities;
   execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult>;
   listTests(opts?: ExecuteOpts): Promise<TestId[]>;
 }
