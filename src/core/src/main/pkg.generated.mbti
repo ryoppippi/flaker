@@ -2,7 +2,19 @@
 package "mizchi/flaker/src/main"
 
 // Values
+pub fn aggregate_report_json(String) -> String
+
+pub fn build_reverse_deps_json(String) -> String
+
+pub fn classify_report_diff_json(String) -> String
+
 pub fn detect_flaky_json(String) -> String
+
+pub fn expand_transitive_json(String, String) -> String
+
+pub fn find_affected_nodes_json(String, String) -> String
+
+pub fn get_affected_test_patterns_json(String, String) -> String
 
 pub fn resolve_affected_json(String, String) -> String
 
@@ -11,6 +23,8 @@ pub fn sample_hybrid_json(String, String, Int, Int) -> String
 pub fn sample_random_json(String, Int, Int) -> String
 
 pub fn sample_weighted_json(String, Int, Int) -> String
+
+pub fn topological_sort_json(String) -> String
 
 // Errors
 

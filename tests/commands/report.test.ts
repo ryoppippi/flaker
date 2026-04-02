@@ -421,6 +421,41 @@ describe("report aggregate", () => {
     expect(markdown).toContain("meta:browser=chromium");
   });
 
+  it("merges unstable tests across shards by stable test id", () => {
+    const repeated = resolveTestIdentity({
+      suite: "tests/vrt.spec.ts",
+      testName: "renders card",
+      taskId: "vrt",
+      status: "failed",
+      durationMs: 30,
+      retryCount: 1,
+    });
+    const shardA = createReportSummaryArtifact(
+      summarizeResults([{ ...repeated, status: "failed" }], "playwright"),
+      { shard: "shard-1" },
+    );
+    const shardB = createReportSummaryArtifact(
+      summarizeResults([{ ...repeated, status: "flaky" }], "playwright"),
+      { shard: "shard-2" },
+    );
+
+    const aggregate = runReportAggregate({
+      summaries: [shardB, shardA],
+    });
+
+    expect(aggregate.summary).toMatchObject({
+      shardCount: 2,
+      unstableCount: 1,
+    });
+    expect(aggregate.unstable).toEqual([
+      expect.objectContaining({
+        testName: "renders card",
+        shards: ["shard-1", "shard-2"],
+        statuses: ["failed", "flaky"],
+      }),
+    ]);
+  });
+
   it("loads plain summaries and bundle artifacts from a directory", () => {
     const cwd = mkdtempSync(join(tmpdir(), "report-aggregate-"));
     try {

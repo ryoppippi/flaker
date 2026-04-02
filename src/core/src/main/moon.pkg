@@ -3,6 +3,9 @@ import {
   "mizchi/flaker/src/flaky_detector",
   "mizchi/flaker/src/sampler",
   "mizchi/flaker/src/affected" @affected,
+  "mizchi/flaker/src/graph_core",
+  "mizchi/flaker/src/report_diff_core",
+  "mizchi/flaker/src/report_aggregate_core",
   "moonbitlang/core/json",
 }
 
@@ -16,6 +19,13 @@ options(
         "sample_weighted_json",
         "sample_hybrid_json",
         "resolve_affected_json",
+        "find_affected_nodes_json",
+        "expand_transitive_json",
+        "build_reverse_deps_json",
+        "topological_sort_json",
+        "get_affected_test_patterns_json",
+        "classify_report_diff_json",
+        "aggregate_report_json",
       ],
       "format": "esm",
     },

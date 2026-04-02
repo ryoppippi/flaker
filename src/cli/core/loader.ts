@@ -1,3 +1,12 @@
+import type { DependencyGraph, GraphNode } from "../graph/types.js";
+import {
+  buildReverseDeps as buildReverseDepsFallback,
+  expandTransitive as expandTransitiveFallback,
+  findAffectedNodes as findAffectedNodesFallback,
+  getAffectedTestPatterns as getAffectedTestPatternsFallback,
+  topologicalSort as topologicalSortFallback,
+} from "../graph/analyzer.js";
+
 export interface DetectInput {
   results: Array<{
     suite: string;
@@ -41,6 +50,29 @@ export interface MetriciCore {
   sampleWeighted(meta: TestMeta[], count: number, seed: number): TestMeta[];
   sampleHybrid(meta: TestMeta[], affectedSuites: string[], count: number, seed: number): TestMeta[];
   resolveAffected(workflowText: string, changedPaths: string[]): string[];
+  findAffectedNodes(graph: DependencyGraph, changedFiles: string[]): string[];
+  expandTransitive(graph: DependencyGraph, initial: Set<string>): string[];
+  buildReverseDeps(graph: DependencyGraph): Map<string, string[]>;
+  topologicalSort(graph: DependencyGraph): string[];
+  getAffectedTestPatterns(graph: DependencyGraph, affectedIds: string[]): string[];
+}
+
+interface SerializableGraphNode {
+  id: string;
+  path: string;
+  dependencies: string[];
+  source_patterns: string[];
+  test_patterns: string[];
+}
+
+interface SerializableDependencyGraph {
+  root_dir: string;
+  nodes: SerializableGraphNode[];
+}
+
+interface ReverseDepEntry {
+  id: string;
+  dependents: string[];
 }
 
 /** LCG PRNG: returns next state and a float in [0, 1) */
@@ -186,6 +218,33 @@ interface MbtJsExports {
   sample_weighted_json: (meta: string, count: number, seed: number) => string;
   sample_hybrid_json: (meta: string, affected: string, count: number, seed: number) => string;
   resolve_affected_json: (workflow: string, changed: string) => string;
+  find_affected_nodes_json: (graph: string, changed: string) => string;
+  expand_transitive_json: (graph: string, initial: string) => string;
+  build_reverse_deps_json: (graph: string) => string;
+  topological_sort_json: (graph: string) => string;
+  get_affected_test_patterns_json: (graph: string, affectedIds: string) => string;
+}
+
+function serializeGraph(graph: DependencyGraph): string {
+  const serializable: SerializableDependencyGraph = {
+    root_dir: graph.rootDir,
+    nodes: [...graph.nodes.values()].map((node): SerializableGraphNode => ({
+      id: node.id,
+      path: node.path,
+      dependencies: [...node.dependencies],
+      source_patterns: [...node.sourcePatterns],
+      test_patterns: [...node.testPatterns],
+    })),
+  };
+  return JSON.stringify(serializable);
+}
+
+function deserializeReverseDeps(entries: ReverseDepEntry[]): Map<string, string[]> {
+  const reverse = new Map<string, string[]>();
+  for (const entry of entries) {
+    reverse.set(entry.id, [...entry.dependents]);
+  }
+  return reverse;
 }
 
 function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
@@ -204,6 +263,22 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
     },
     resolveAffected(workflowText: string, changedPaths: string[]): string[] {
       return JSON.parse(mbt.resolve_affected_json(workflowText, JSON.stringify(changedPaths)));
+    },
+    findAffectedNodes(graph: DependencyGraph, changedFiles: string[]): string[] {
+      return JSON.parse(mbt.find_affected_nodes_json(serializeGraph(graph), JSON.stringify(changedFiles)));
+    },
+    expandTransitive(graph: DependencyGraph, initial: Set<string>): string[] {
+      return JSON.parse(mbt.expand_transitive_json(serializeGraph(graph), JSON.stringify([...initial])));
+    },
+    buildReverseDeps(graph: DependencyGraph): Map<string, string[]> {
+      const entries = JSON.parse(mbt.build_reverse_deps_json(serializeGraph(graph))) as ReverseDepEntry[];
+      return deserializeReverseDeps(entries);
+    },
+    topologicalSort(graph: DependencyGraph): string[] {
+      return JSON.parse(mbt.topological_sort_json(serializeGraph(graph)));
+    },
+    getAffectedTestPatterns(graph: DependencyGraph, affectedIds: string[]): string[] {
+      return JSON.parse(mbt.get_affected_test_patterns_json(serializeGraph(graph), JSON.stringify(affectedIds)));
     },
   };
 }
@@ -224,7 +299,12 @@ export async function loadCore(): Promise<MetriciCore> {
       typeof mbt.sample_random_json === "function" &&
       typeof mbt.sample_weighted_json === "function" &&
       typeof mbt.sample_hybrid_json === "function" &&
-      typeof mbt.resolve_affected_json === "function"
+      typeof mbt.resolve_affected_json === "function" &&
+      typeof mbt.find_affected_nodes_json === "function" &&
+      typeof mbt.expand_transitive_json === "function" &&
+      typeof mbt.build_reverse_deps_json === "function" &&
+      typeof mbt.topological_sort_json === "function" &&
+      typeof mbt.get_affected_test_patterns_json === "function"
     ) {
       cachedCore = wrapMbtCore(mbt);
       return cachedCore;
@@ -238,6 +318,11 @@ export async function loadCore(): Promise<MetriciCore> {
     sampleWeighted,
     sampleHybrid,
     resolveAffected: resolveAffectedFallback,
+    findAffectedNodes: findAffectedNodesFallback,
+    expandTransitive: expandTransitiveFallback,
+    buildReverseDeps: buildReverseDepsFallback,
+    topologicalSort: topologicalSortFallback,
+    getAffectedTestPatterns: getAffectedTestPatternsFallback,
   };
   return cachedCore;
 }
@@ -259,6 +344,11 @@ export function loadCoreSync(): MetriciCore {
     sampleWeighted,
     sampleHybrid,
     resolveAffected: resolveAffectedFallback,
+    findAffectedNodes: findAffectedNodesFallback,
+    expandTransitive: expandTransitiveFallback,
+    buildReverseDeps: buildReverseDepsFallback,
+    topologicalSort: topologicalSortFallback,
+    getAffectedTestPatterns: getAffectedTestPatternsFallback,
   };
 }
 

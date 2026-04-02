@@ -1,9 +1,6 @@
 import type { DependencyResolver } from "./types.js";
 import type { GraphAdapter } from "../graph/types.js";
-import {
-  findAffectedNodes,
-  getAffectedTestPatterns,
-} from "../graph/analyzer.js";
+import { loadCore } from "../core/loader.js";
 
 export class GraphResolver implements DependencyResolver {
   private adapter: GraphAdapter;
@@ -14,10 +11,11 @@ export class GraphResolver implements DependencyResolver {
     this.rootDir = rootDir;
   }
 
-  resolve(changedFiles: string[], allTestFiles: string[]): string[] {
+  async resolve(changedFiles: string[], allTestFiles: string[]): Promise<string[]> {
     const graph = this.adapter.buildGraph(this.rootDir);
-    const affectedIds = findAffectedNodes(graph, changedFiles);
-    const testPatterns = getAffectedTestPatterns(graph, affectedIds);
+    const core = await loadCore();
+    const affectedIds = core.findAffectedNodes(graph, changedFiles);
+    const testPatterns = core.getAffectedTestPatterns(graph, affectedIds);
 
     // Match test patterns against allTestFiles using prefix matching
     const testSet = new Set(allTestFiles);

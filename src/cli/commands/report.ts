@@ -112,6 +112,214 @@ export interface ReportAggregate {
   unstable: ReportAggregateUnstableTest[];
 }
 
+interface ReportDiffStatusInput {
+  test_id: string;
+  base_status: string;
+  head_status: string;
+}
+
+interface ReportTotalsInput {
+  total: number;
+  passed: number;
+  failed: number;
+  flaky: number;
+  skipped: number;
+  retries: number;
+  duration_ms: number;
+}
+
+interface ReportDiffBuckets {
+  new_failures: string[];
+  new_flaky: string[];
+  resolved_failures: string[];
+  resolved_flaky: string[];
+  persistent_flaky: string[];
+}
+
+interface ReportAggregateUnstableStatusInput {
+  test_id: string;
+  status: string;
+}
+
+interface ReportAggregateShardInput {
+  shard_id: string;
+  totals: ReportTotalsInput;
+  unstable: ReportAggregateUnstableStatusInput[];
+}
+
+interface ReportAggregateUnstableBuckets {
+  test_id: string;
+  shard_ids: string[];
+  statuses: string[];
+}
+
+interface ReportAggregateOutput {
+  shard_count: number;
+  unstable_count: number;
+  totals: ReportTotalsInput;
+  unstable: ReportAggregateUnstableBuckets[];
+}
+
+interface ReportDiffCoreExports {
+  classify_report_diff_json?: (inputsJson: string) => string;
+  aggregate_report_json?: (shardsJson: string) => string;
+}
+
+const MOONBIT_JS_BUILD_URL = new URL(
+  "../../../src/core/_build/js/debug/build/src/main/main.js",
+  import.meta.url,
+);
+
+function classifyReportDiffFallback(
+  inputs: ReportDiffStatusInput[],
+): ReportDiffBuckets {
+  const buckets: ReportDiffBuckets = {
+    new_failures: [],
+    new_flaky: [],
+    resolved_failures: [],
+    resolved_flaky: [],
+    persistent_flaky: [],
+  };
+
+  for (const input of inputs) {
+    const baseStatus = input.base_status;
+    const headStatus = input.head_status;
+
+    if (headStatus === "failed" && baseStatus !== "failed") {
+      buckets.new_failures.push(input.test_id);
+    }
+
+    if (headStatus === "flaky") {
+      if (baseStatus === "flaky") {
+        buckets.persistent_flaky.push(input.test_id);
+      } else if (baseStatus !== "failed") {
+        buckets.new_flaky.push(input.test_id);
+      }
+    }
+
+    if (baseStatus === "failed" && headStatus !== "failed" && headStatus !== "") {
+      buckets.resolved_failures.push(input.test_id);
+    }
+
+    if (baseStatus === "flaky" && headStatus !== "flaky" && headStatus !== "") {
+      buckets.resolved_flaky.push(input.test_id);
+    }
+  }
+
+  return buckets;
+}
+
+function toCoreTotals(totals: ReportTotals): ReportTotalsInput {
+  return {
+    total: totals.total,
+    passed: totals.passed,
+    failed: totals.failed,
+    flaky: totals.flaky,
+    skipped: totals.skipped,
+    retries: totals.retries,
+    duration_ms: totals.durationMs,
+  };
+}
+
+function fromCoreTotals(totals: ReportTotalsInput): ReportTotals {
+  return {
+    total: totals.total,
+    passed: totals.passed,
+    failed: totals.failed,
+    flaky: totals.flaky,
+    skipped: totals.skipped,
+    retries: totals.retries,
+    durationMs: totals.duration_ms,
+  };
+}
+
+function aggregateReportFallback(
+  shards: ReportAggregateShardInput[],
+): ReportAggregateOutput {
+  const totals: ReportTotalsInput = {
+    total: 0,
+    passed: 0,
+    failed: 0,
+    flaky: 0,
+    skipped: 0,
+    retries: 0,
+    duration_ms: 0,
+  };
+  const unstableIndex = new Map<
+    string,
+    { shardSet: Set<string>; statusSet: Set<string> }
+  >();
+
+  for (const shard of shards) {
+    totals.total += shard.totals.total;
+    totals.passed += shard.totals.passed;
+    totals.failed += shard.totals.failed;
+    totals.flaky += shard.totals.flaky;
+    totals.skipped += shard.totals.skipped;
+    totals.retries += shard.totals.retries;
+    totals.duration_ms += shard.totals.duration_ms;
+
+    for (const unstable of shard.unstable) {
+      const existing = unstableIndex.get(unstable.test_id);
+      if (existing) {
+        existing.shardSet.add(shard.shard_id);
+        existing.statusSet.add(unstable.status);
+        continue;
+      }
+
+      unstableIndex.set(unstable.test_id, {
+        shardSet: new Set([shard.shard_id]),
+        statusSet: new Set([unstable.status]),
+      });
+    }
+  }
+
+  return {
+    shard_count: shards.length,
+    unstable_count: unstableIndex.size,
+    totals,
+    unstable: [...unstableIndex.entries()].map(([testId, entry]) => ({
+      test_id: testId,
+      shard_ids: [...entry.shardSet].sort(),
+      statuses: [...entry.statusSet].sort(),
+    })),
+  };
+}
+
+async function loadReportDiffClassifier(): Promise<
+  (inputs: ReportDiffStatusInput[]) => ReportDiffBuckets
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    if (typeof mod.classify_report_diff_json === "function") {
+      return (inputs) =>
+        JSON.parse(mod.classify_report_diff_json!(JSON.stringify(inputs))) as ReportDiffBuckets;
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation.
+  }
+  return classifyReportDiffFallback;
+}
+
+const classifyReportDiff = await loadReportDiffClassifier();
+
+async function loadReportAggregateReducer(): Promise<
+  (shards: ReportAggregateShardInput[]) => ReportAggregateOutput
+> {
+  try {
+    const mod = (await import(MOONBIT_JS_BUILD_URL.href)) as ReportDiffCoreExports;
+    if (typeof mod.aggregate_report_json === "function") {
+      return (shards) =>
+        JSON.parse(mod.aggregate_report_json!(JSON.stringify(shards))) as ReportAggregateOutput;
+    }
+  } catch {
+    // MoonBit JS build not available, fall back to TS implementation.
+  }
+  return aggregateReportFallback;
+}
+
+const aggregateReport = await loadReportAggregateReducer();
+
 function emptyTotals(): ReportTotals {
   return {
     total: 0,
@@ -343,43 +551,38 @@ export function runReportDiff(opts: {
 }): ReportDiff {
   const baseById = new Map(opts.base.tests.map((test) => [test.testId, test]));
   const headById = new Map(opts.head.tests.map((test) => [test.testId, test]));
-  const allIds = new Set<string>([
+  const allIds = [...new Set<string>([
     ...baseById.keys(),
     ...headById.keys(),
-  ]);
+  ])].sort((a, b) => a.localeCompare(b));
 
-  const newFailures: ReportDiffEntry[] = [];
-  const newFlaky: ReportDiffEntry[] = [];
-  const resolvedFailures: ReportDiffEntry[] = [];
-  const resolvedFlaky: ReportDiffEntry[] = [];
-  const persistentFlaky: ReportDiffEntry[] = [];
+  const buckets = classifyReportDiff(
+    allIds.map((testId) => {
+      const base = baseById.get(testId);
+      const head = headById.get(testId);
+      return {
+        test_id: testId,
+        base_status: base?.status ?? "",
+        head_status: head?.status ?? "",
+      };
+    }),
+  );
 
-  for (const testId of allIds) {
-    const base = baseById.get(testId) ?? null;
-    const head = headById.get(testId) ?? null;
-    const baseStatus = base?.status ?? null;
-    const headStatus = head?.status ?? null;
-
-    if (headStatus === "failed" && baseStatus !== "failed") {
-      newFailures.push(toDiffEntry(base, head));
-    }
-
-    if (headStatus === "flaky") {
-      if (baseStatus === "flaky") {
-        persistentFlaky.push(toDiffEntry(base, head));
-      } else if (baseStatus !== "failed") {
-        newFlaky.push(toDiffEntry(base, head));
-      }
-    }
-
-    if (baseStatus === "failed" && headStatus !== "failed" && headStatus !== null) {
-      resolvedFailures.push(toDiffEntry(base, head));
-    }
-
-    if (baseStatus === "flaky" && headStatus !== "flaky" && headStatus !== null) {
-      resolvedFlaky.push(toDiffEntry(base, head));
-    }
-  }
+  const newFailures = buckets.new_failures.map((testId) =>
+    toDiffEntry(baseById.get(testId) ?? null, headById.get(testId) ?? null),
+  );
+  const newFlaky = buckets.new_flaky.map((testId) =>
+    toDiffEntry(baseById.get(testId) ?? null, headById.get(testId) ?? null),
+  );
+  const resolvedFailures = buckets.resolved_failures.map((testId) =>
+    toDiffEntry(baseById.get(testId) ?? null, headById.get(testId) ?? null),
+  );
+  const resolvedFlaky = buckets.resolved_flaky.map((testId) =>
+    toDiffEntry(baseById.get(testId) ?? null, headById.get(testId) ?? null),
+  );
+  const persistentFlaky = buckets.persistent_flaky.map((testId) =>
+    toDiffEntry(baseById.get(testId) ?? null, headById.get(testId) ?? null),
+  );
 
   return {
     baseAdapter: opts.base.adapter,
@@ -408,10 +611,8 @@ export function runReportDiff(opts: {
 export function runReportAggregate(opts: {
   summaries: ReportSummaryArtifact[];
 }): ReportAggregate {
-  const totals = emptyTotals();
   const shards = opts.summaries.map((artifact, index) => {
     const shardId = artifact.metadata.shard ?? `summary-${index + 1}`;
-    addTotals(totals, artifact.summary.totals);
     return {
       shardId,
       adapter: artifact.summary.adapter,
@@ -422,51 +623,51 @@ export function runReportAggregate(opts: {
     };
   });
 
-  const unstableIndex = new Map<
-    string,
-    ReportAggregateUnstableTest & {
-      shardSet: Set<string>;
-      statusSet: Set<"failed" | "flaky">;
-    }
-  >();
+  const unstableSeedById = new Map<string, ReportTestSummary>();
 
   for (const shard of shards) {
     for (const test of shard.summary.unstable) {
-      const status = test.status === "failed" ? "failed" : "flaky";
-      const existing = unstableIndex.get(test.testId);
-      if (existing) {
-        existing.shardSet.add(shard.shardId);
-        existing.statusSet.add(status);
-        continue;
+      if (!unstableSeedById.has(test.testId)) {
+        unstableSeedById.set(test.testId, test);
       }
-
-      unstableIndex.set(test.testId, {
-        ...test,
-        shards: [],
-        statuses: [],
-        shardSet: new Set([shard.shardId]),
-        statusSet: new Set([status]),
-      });
     }
   }
 
+  const aggregate = aggregateReport(
+    shards.map((shard) => ({
+      shard_id: shard.shardId,
+      totals: toCoreTotals(shard.totals),
+      unstable: shard.summary.unstable.map((test) => ({
+        test_id: test.testId,
+        status: test.status === "failed" ? "failed" : "flaky",
+      })),
+    })),
+  );
+
   return {
     summary: {
-      shardCount: shards.length,
-      unstableCount: unstableIndex.size,
+      shardCount: aggregate.shard_count,
+      unstableCount: aggregate.unstable_count,
     },
-    totals,
+    totals: fromCoreTotals(aggregate.totals),
     shards: shards
       .map(({ summary: _summary, ...shard }) => shard)
       .sort((a, b) => a.shardId.localeCompare(b.shardId)),
     unstable: sortTests(
-      [...unstableIndex.values()].map(
-        ({ shardSet, statusSet, ...entry }) => ({
-          ...entry,
-          shards: [...shardSet].sort(),
-          statuses: [...statusSet].sort(),
-        }),
-      ),
+      aggregate.unstable.map((entry) => {
+        const seed = unstableSeedById.get(entry.test_id);
+        if (!seed) {
+          throw new Error(`Missing unstable seed for ${entry.test_id}`);
+        }
+        return {
+          ...seed,
+          shards: [...entry.shard_ids].sort(),
+          statuses: entry.statuses.filter(
+            (status): status is "failed" | "flaky" =>
+              status === "failed" || status === "flaky",
+          ),
+        };
+      }),
     ),
   };
 }

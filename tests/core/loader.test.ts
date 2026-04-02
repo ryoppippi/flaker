@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { loadCore } from "../../src/cli/core/loader.js";
 import type { DetectInput, TestMeta } from "../../src/cli/core/loader.js";
+import type { DependencyGraph, GraphNode } from "../../src/cli/graph/types.js";
 
 describe("loadCore", () => {
   it("returns defined object with all functions", async () => {
@@ -108,5 +109,37 @@ describe("loadCore", () => {
       }
     }
     expect(flakyWins).toBeGreaterThan(50);
+  });
+
+  it("provides graph analyzer operations", async () => {
+    const core = await loadCore();
+    const graph: DependencyGraph = {
+      rootDir: "/tmp",
+      nodes: new Map<string, GraphNode>([
+        ["core", {
+          id: "core",
+          path: "packages/core",
+          dependencies: [],
+          sourcePatterns: ["packages/core/src/**"],
+          testPatterns: ["packages/core/tests/**"],
+        }],
+        ["app", {
+          id: "app",
+          path: "packages/app",
+          dependencies: ["core"],
+          sourcePatterns: ["packages/app/src/**"],
+          testPatterns: ["packages/app/tests/**"],
+        }],
+      ]),
+    };
+
+    expect(core.findAffectedNodes(graph, ["packages/core/src/index.ts"]).sort()).toEqual(["app", "core"]);
+    expect(core.expandTransitive(graph, new Set(["core"])).sort()).toEqual(["app", "core"]);
+    expect(core.buildReverseDeps(graph).get("core")).toEqual(["app"]);
+    expect(core.topologicalSort(graph)).toEqual(["core", "app"]);
+    expect(core.getAffectedTestPatterns(graph, ["app", "core"])).toEqual([
+      "packages/app/tests/**",
+      "packages/core/tests/**",
+    ]);
   });
 });
