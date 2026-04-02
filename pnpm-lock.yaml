@@ -30,6 +30,9 @@ importers:
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0
+      rolldown:
+        specifier: 1.0.0-rc.12
+        version: 1.0.0-rc.12
       typescript:
         specifier: ^6.0.2
         version: 6.0.2

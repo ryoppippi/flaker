@@ -1,14 +1,16 @@
-name: ci
+name: release
 
 on:
   push:
-    branches:
-      - main
-      - "codex/**"
-  pull_request:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,6 +24,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - name: Setup MoonBit
         uses: hustcer/setup-moonbit@v1
@@ -32,16 +35,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Verify
+        run: |
+          pnpm run typecheck
+          pnpm vitest run
+          moon test --target js
+
+      - name: Build package
         run: pnpm run build
 
       - name: CLI smoke
         run: node dist/cli/main.js --help >/dev/null
 
-      - name: Test
-        run: >
-          pnpm exec vitest run
-          tests/adapters/playwright.test.ts
-          tests/reporting/*.test.ts
-          tests/commands/collect.test.ts
-          tests/storage/duckdb.test.ts
+      - name: Pack dry-run
+        run: pnpm run pack:check
+
+      - name: Publish
+        run: pnpm publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

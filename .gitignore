@@ -6,3 +6,5 @@ dist
 target
 _build
 .mooncakes
+.pnpm-store
+.npm-cache

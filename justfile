@@ -5,7 +5,7 @@ test-watch:
     pnpm vitest watch
 
 build:
-    pnpm tsc
+    pnpm run build
 
 cli *args:
     pnpm run build

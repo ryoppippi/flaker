@@ -7,14 +7,27 @@
     "flaker": "./dist/cli/main.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node ./scripts/build-package.mjs",
+    "build:package": "node ./scripts/build-package.mjs",
     "cli": "node dist/cli/main.js",
+    "pack:check": "npm pack --dry-run --cache ./.npm-cache",
     "test": "vitest run",
-    "test:watch": "vitest watch"
+    "test:watch": "vitest watch",
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm run build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "packageManager": "pnpm@10.27.0",
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -31,6 +44,7 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^25.5.0",
+    "rolldown": "1.0.0-rc.12",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
   }
