@@ -57,8 +57,12 @@ jobs:
             '',
             `- runsCollected: ${summary.runsCollected}`,
             `- testsCollected: ${summary.testsCollected}`,
+            `- pendingArtifactRuns: ${summary.pendingArtifactRuns}`,
             `- failedRuns: ${summary.failedRuns}`,
           ];
+          if (summary.pendingArtifactRunIds.length > 0) {
+            lines.push(`- pendingArtifactRunIds: ${summary.pendingArtifactRunIds.join(', ')}`);
+          }
           if (summary.failures.length > 0) {
             lines.push('');
             lines.push('| runId | message |');

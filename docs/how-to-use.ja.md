@@ -141,7 +141,7 @@ flaker collect --json --output .artifacts/collect.json --fail-on-errors
 
 GitHub Actions の artifact からテストレポートを自動抽出します。既定の artifact 名は `playwright` が `playwright-report`、`junit` が `junit-report`、`vrt-migration` が `migration-report`、`vrt-bench` が `bench-report` です。workflow 側で別名を使う場合は `[adapter].artifact_name` で上書きします。`GITHUB_TOKEN` 環境変数が必要です。
 
-`--json` は機械可読 summary が欲しいとき、`--output <file>` は summary を artifact に残したいとき、`--fail-on-errors` は partial failure を CI failure として扱いたいときに使います。
+`--json` は機械可読 summary が欲しいとき、`--output <file>` は summary を artifact に残したいとき、`--fail-on-errors` は partial failure を CI failure として扱いたいときに使います。JSON summary では、実際に取り込めた run (`runsCollected`)、まだ matching artifact が見つかっていない run (`pendingArtifactRuns`)、収集中に失敗した run (`failedRuns`) を分けて確認できます。
 
 GitHub Actions の完全な例は [examples/github-actions/collect-summary.yml](../examples/github-actions/collect-summary.yml) を参照してください。
 

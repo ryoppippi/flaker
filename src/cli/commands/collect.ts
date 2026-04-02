@@ -44,6 +44,8 @@ export interface CollectFailure {
 export interface CollectResult {
   runsCollected: number;
   testsCollected: number;
+  pendingArtifactRuns: number;
+  pendingArtifactRunIds: number[];
   failedRuns: number;
   failedRunIds: number[];
   failures: CollectFailure[];
@@ -57,13 +59,16 @@ export function formatCollectSummary(
     return JSON.stringify(result, null, 2);
   }
   const base = `Collected ${result.runsCollected} runs, ${result.testsCollected} test results`;
+  const pendingSuffix = result.pendingArtifactRuns > 0
+    ? `, ${result.pendingArtifactRuns} pending artifact runs${result.pendingArtifactRunIds.length > 0 ? ` (${result.pendingArtifactRunIds.join(", ")})` : ""}`
+    : "";
   if (result.failedRuns === 0) {
-    return base;
+    return `${base}${pendingSuffix}`;
   }
   const suffix = result.failedRunIds.length > 0
     ? ` (${result.failedRunIds.join(", ")})`
     : "";
-  return `${base}, ${result.failedRuns} failed runs${suffix}`;
+  return `${base}${pendingSuffix}, ${result.failedRuns} failed runs${suffix}`;
 }
 
 export function resolveCollectExitCode(
@@ -119,6 +124,8 @@ export async function collectWorkflowRuns(
 
   let runsCollected = 0;
   let testsCollected = 0;
+  let pendingArtifactRuns = 0;
+  const pendingArtifactRunIds: number[] = [];
   let failedRuns = 0;
   const failedRunIds: number[] = [];
   const failures: CollectFailure[] = [];
@@ -165,7 +172,8 @@ export async function collectWorkflowRuns(
         (a) => a.name === artifactName && !a.expired,
       );
       if (!artifact) {
-        runsCollected++;
+        pendingArtifactRuns++;
+        pendingArtifactRunIds.push(run.id);
         continue;
       }
 
@@ -192,7 +200,8 @@ export async function collectWorkflowRuns(
         }
       }
       if (!reportContent) {
-        runsCollected++;
+        pendingArtifactRuns++;
+        pendingArtifactRunIds.push(run.id);
         continue;
       }
 
@@ -222,5 +231,13 @@ export async function collectWorkflowRuns(
     }
   }
 
-  return { runsCollected, testsCollected, failedRuns, failedRunIds, failures };
+  return {
+    runsCollected,
+    testsCollected,
+    pendingArtifactRuns,
+    pendingArtifactRunIds,
+    failedRuns,
+    failedRunIds,
+    failures,
+  };
 }

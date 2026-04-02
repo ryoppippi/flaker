@@ -88,6 +88,8 @@ describe("formatCollectSummary", () => {
     expect(formatCollectSummary({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 2,
       failedRunIds: [1007, 1009],
       failures: [
@@ -124,6 +126,8 @@ describe("formatCollectSummary", () => {
         repo: "owner/repo",
         adapterType: "vrt-bench",
       });
+      expect(result.pendingArtifactRuns).toBe(0);
+      expect(result.pendingArtifactRunIds).toEqual([]);
       expect(result.failures).toEqual([]);
     } finally {
       await store.close();
@@ -134,6 +138,8 @@ describe("formatCollectSummary", () => {
     expect(JSON.parse(formatCollectSummary({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 2,
       failedRunIds: [1007, 1009],
       failures: [
@@ -143,6 +149,8 @@ describe("formatCollectSummary", () => {
     }, "json"))).toEqual({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 2,
       failedRunIds: [1007, 1009],
       failures: [
@@ -156,10 +164,24 @@ describe("formatCollectSummary", () => {
     expect(formatCollectSummary({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 0,
       failedRunIds: [],
       failures: [],
     })).toBe("Collected 1 runs, 3 test results");
+  });
+
+  it("mentions pending artifact runs separately from collected runs", () => {
+    expect(formatCollectSummary({
+      runsCollected: 1,
+      testsCollected: 3,
+      pendingArtifactRuns: 2,
+      pendingArtifactRunIds: [1005, 1006],
+      failedRuns: 1,
+      failedRunIds: [1007],
+      failures: [{ runId: 1007, message: "temporary artifact download error" }],
+    })).toBe("Collected 1 runs, 3 test results, 2 pending artifact runs (1005, 1006), 1 failed runs (1007)");
   });
 });
 
@@ -168,6 +190,8 @@ describe("resolveCollectExitCode", () => {
     expect(resolveCollectExitCode({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 1,
       failedRunIds: [1007],
       failures: [{ runId: 1007, message: "temporary artifact download error" }],
@@ -178,6 +202,8 @@ describe("resolveCollectExitCode", () => {
     expect(resolveCollectExitCode({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 1,
       failedRunIds: [1007],
       failures: [{ runId: 1007, message: "temporary artifact download error" }],
@@ -188,6 +214,8 @@ describe("resolveCollectExitCode", () => {
     expect(resolveCollectExitCode({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 0,
       failedRunIds: [],
       failures: [],
@@ -202,6 +230,8 @@ describe("writeCollectSummary", () => {
     writeCollectSummary(outputPath, formatCollectSummary({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 1,
       failedRunIds: [1007],
       failures: [{ runId: 1007, message: "temporary artifact download error" }],
@@ -210,6 +240,8 @@ describe("writeCollectSummary", () => {
     expect(JSON.parse(readTextFileSync(outputPath, "utf-8"))).toEqual({
       runsCollected: 1,
       testsCollected: 3,
+      pendingArtifactRuns: 0,
+      pendingArtifactRunIds: [],
       failedRuns: 1,
       failedRunIds: [1007],
       failures: [{ runId: 1007, message: "temporary artifact download error" }],
@@ -257,6 +289,8 @@ describe("collectWorkflowRuns", () => {
 
     expect(result.runsCollected).toBe(1);
     expect(result.testsCollected).toBe(4);
+    expect(result.pendingArtifactRuns).toBe(0);
+    expect(result.pendingArtifactRunIds).toEqual([]);
 
     const runs = await store.raw<{ id: number }>(
       "SELECT id FROM workflow_runs WHERE id = ?",
@@ -299,6 +333,7 @@ describe("collectWorkflowRuns", () => {
 
     expect(result.runsCollected).toBe(1);
     expect(result.testsCollected).toBe(3);
+    expect(result.pendingArtifactRuns).toBe(0);
 
     const tests = await store.raw<{ status: string }>(
       "SELECT status FROM test_results WHERE workflow_run_id = ? ORDER BY test_name",
@@ -334,6 +369,7 @@ describe("collectWorkflowRuns", () => {
 
     expect(result.runsCollected).toBe(1);
     expect(result.testsCollected).toBe(3);
+    expect(result.pendingArtifactRuns).toBe(0);
   });
 
   it("collects built-in vrt bench reports from artifacts", async () => {
@@ -363,6 +399,7 @@ describe("collectWorkflowRuns", () => {
 
     expect(result.runsCollected).toBe(1);
     expect(result.testsCollected).toBe(3);
+    expect(result.pendingArtifactRuns).toBe(0);
 
     const tests = await store.raw<{ status: string }>(
       "SELECT status FROM test_results WHERE workflow_run_id = ? ORDER BY test_name",
@@ -395,8 +432,10 @@ describe("collectWorkflowRuns", () => {
       repo: "owner/repo",
       adapterType: "vrt-migration",
     });
-    expect(migrationResult.runsCollected).toBe(1);
+    expect(migrationResult.runsCollected).toBe(0);
     expect(migrationResult.testsCollected).toBe(0);
+    expect(migrationResult.pendingArtifactRuns).toBe(1);
+    expect(migrationResult.pendingArtifactRunIds).toEqual([1005]);
 
     const benchResult = await collectWorkflowRuns({
       store,
@@ -406,6 +445,7 @@ describe("collectWorkflowRuns", () => {
     });
     expect(benchResult.runsCollected).toBe(1);
     expect(benchResult.testsCollected).toBe(3);
+    expect(benchResult.pendingArtifactRuns).toBe(0);
 
     const runCount = await store.raw<{ count: number }>(
       "SELECT COUNT(*)::INTEGER AS count FROM workflow_runs WHERE id = ?",
@@ -462,8 +502,10 @@ describe("collectWorkflowRuns", () => {
       repo: "owner/repo",
       adapterType: "vrt-bench",
     });
-    expect(firstResult.runsCollected).toBe(1);
+    expect(firstResult.runsCollected).toBe(0);
     expect(firstResult.testsCollected).toBe(0);
+    expect(firstResult.pendingArtifactRuns).toBe(1);
+    expect(firstResult.pendingArtifactRunIds).toEqual([1006]);
 
     const pendingCount = await store.raw<{ count: number }>(
       "SELECT COUNT(*)::INTEGER AS count FROM collected_artifacts WHERE workflow_run_id = ? AND adapter_type = ?",
@@ -479,6 +521,7 @@ describe("collectWorkflowRuns", () => {
     });
     expect(secondResult.runsCollected).toBe(1);
     expect(secondResult.testsCollected).toBe(3);
+    expect(secondResult.pendingArtifactRuns).toBe(0);
 
     const testCount = await store.raw<{ count: number }>(
       "SELECT COUNT(*)::INTEGER AS count FROM test_results WHERE workflow_run_id = ?",
@@ -542,6 +585,8 @@ describe("collectWorkflowRuns", () => {
 
       expect(result.runsCollected).toBe(1);
       expect(result.testsCollected).toBe(3);
+      expect(result.pendingArtifactRuns).toBe(0);
+      expect(result.pendingArtifactRunIds).toEqual([]);
       expect(result.failedRuns).toBe(1);
       expect(result.failedRunIds).toEqual([1007]);
       expect(result.failures).toEqual([
@@ -604,6 +649,7 @@ describe("collectWorkflowRuns", () => {
     });
     expect(result1.runsCollected).toBe(1);
     expect(result1.testsCollected).toBe(4);
+    expect(result1.pendingArtifactRuns).toBe(0);
 
     const result2 = await collectWorkflowRuns({
       store,
@@ -614,6 +660,7 @@ describe("collectWorkflowRuns", () => {
     });
     expect(result2.runsCollected).toBe(0);
     expect(result2.testsCollected).toBe(0);
+    expect(result2.pendingArtifactRuns).toBe(0);
 
     const runs = await store.raw<{ count: number }>(
       "SELECT COUNT(*)::INTEGER AS count FROM workflow_runs WHERE id = ?",
