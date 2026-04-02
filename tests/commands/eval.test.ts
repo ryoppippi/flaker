@@ -3,7 +3,12 @@ import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
 import type { TestResult, WorkflowRun } from "../../src/cli/storage/types.js";
 import { runEval, formatEvalReport } from "../../src/cli/commands/eval.js";
 
-function makeRun(id: number, commitSha: string, createdAt: Date): WorkflowRun {
+function makeRun(
+  id: number,
+  commitSha: string,
+  createdAt: Date,
+  overrides?: Partial<WorkflowRun>,
+): WorkflowRun {
   return {
     id,
     repo: "owner/repo",
@@ -13,6 +18,7 @@ function makeRun(id: number, commitSha: string, createdAt: Date): WorkflowRun {
     status: "success",
     createdAt,
     durationMs: 60000,
+    ...overrides,
   };
 }
 
@@ -143,6 +149,128 @@ describe("eval command", () => {
     expect(formatted).toContain("Data Sufficiency");
     expect(formatted).toContain("Detection");
     expect(formatted).toContain("Resolution");
+    expect(formatted).toContain("Sampling KPI");
     expect(formatted).toContain("Recommendations");
+  });
+
+  it("computes local-to-ci sampling KPI per commit", async () => {
+    const now = new Date();
+    const ciTests = ["ci-a", "ci-b", "ci-c", "ci-d"];
+    const localTests = ["local-a", "local-b"];
+
+    const commits = [
+      {
+        commitSha: "commit-pass",
+        localFailed: false,
+        ciFailed: false,
+      },
+      {
+        commitSha: "commit-fail",
+        localFailed: true,
+        ciFailed: true,
+      },
+      {
+        commitSha: "commit-fn",
+        localFailed: false,
+        ciFailed: true,
+      },
+      {
+        commitSha: "commit-fp",
+        localFailed: true,
+        ciFailed: false,
+      },
+    ] as const;
+
+    let runId = 1;
+    for (const commit of commits) {
+      const localRunId = runId++;
+      const ciRunId = runId++;
+      await store.insertWorkflowRun(
+        makeRun(localRunId, commit.commitSha, now, {
+          event: "local-import",
+          branch: "local",
+          status: "completed",
+        }),
+      );
+      await store.insertWorkflowRun(
+        makeRun(ciRunId, commit.commitSha, now, {
+          event: "push",
+          branch: "main",
+          status: "completed",
+        }),
+      );
+
+      await store.insertTestResults(
+        localTests.map((testName, index) =>
+          makeResult(
+            localRunId,
+            "suite-local",
+            testName,
+            commit.localFailed && index === 0 ? "failed" : "passed",
+            commit.commitSha,
+            now,
+          ),
+        ),
+      );
+      await store.insertTestResults(
+        ciTests.map((testName, index) =>
+          makeResult(
+            ciRunId,
+            "suite-ci",
+            testName,
+            commit.ciFailed && index === 0 ? "failed" : "passed",
+            commit.commitSha,
+            now,
+          ),
+        ),
+      );
+    }
+
+    await store.insertWorkflowRun(
+      makeRun(runId++, "local-only", now, {
+        event: "actrun-local",
+        branch: "local",
+        status: "completed",
+      }),
+    );
+    await store.insertTestResults([
+      makeResult(runId - 1, "suite-local", "orphan-local", "passed", "local-only", now),
+    ]);
+
+    await store.insertWorkflowRun(
+      makeRun(runId++, "ci-only", now, {
+        event: "pull_request",
+        branch: "main",
+        status: "completed",
+      }),
+    );
+    await store.insertTestResults([
+      makeResult(runId - 1, "suite-ci", "orphan-ci", "passed", "ci-only", now),
+    ]);
+
+    const report = await runEval({ store });
+
+    expect(report.samplingKpi.matchedCommits).toBe(4);
+    expect(report.samplingKpi.localOnlyCommits).toBe(1);
+    expect(report.samplingKpi.ciOnlyCommits).toBe(1);
+    expect(report.samplingKpi.avgLocalSampleSize).toBe(2);
+    expect(report.samplingKpi.medianLocalSampleSize).toBe(2);
+    expect(report.samplingKpi.p95LocalSampleSize).toBe(2);
+    expect(report.samplingKpi.avgCiTestCount).toBe(4);
+    expect(report.samplingKpi.avgSampleRatio).toBe(50);
+    expect(report.samplingKpi.passSignal.localPassCommits).toBe(2);
+    expect(report.samplingKpi.passSignal.ciPassWhenLocalPass).toBe(1);
+    expect(report.samplingKpi.passSignal.rate).toBe(50);
+    expect(report.samplingKpi.failSignal.localFailCommits).toBe(2);
+    expect(report.samplingKpi.failSignal.ciFailWhenLocalFail).toBe(1);
+    expect(report.samplingKpi.failSignal.rate).toBe(50);
+    expect(report.samplingKpi.misses.localPassButCiFail).toBe(1);
+    expect(report.samplingKpi.misses.localFailButCiPass).toBe(1);
+    expect(report.samplingKpi.misses.falseNegativeRate).toBe(50);
+    expect(report.samplingKpi.misses.falsePositiveRate).toBe(50);
+    expect(report.samplingKpi.confusionMatrix.truePositive).toBe(1);
+    expect(report.samplingKpi.confusionMatrix.falsePositive).toBe(1);
+    expect(report.samplingKpi.confusionMatrix.falseNegative).toBe(1);
+    expect(report.samplingKpi.confusionMatrix.trueNegative).toBe(1);
   });
 });

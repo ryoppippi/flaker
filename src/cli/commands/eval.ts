@@ -21,7 +21,212 @@ export interface EvalReport {
     mttdDays: number | null;
     mttrDays: number | null;
   };
+  samplingKpi: SamplingKpiReport;
   healthScore: number;
+}
+
+interface PredictiveSignalSummary {
+  localPassCommits?: number;
+  ciPassWhenLocalPass?: number;
+  localFailCommits?: number;
+  ciFailWhenLocalFail?: number;
+  rate: number | null;
+}
+
+interface SamplingKpiReport {
+  matchedCommits: number;
+  localOnlyCommits: number;
+  ciOnlyCommits: number;
+  avgLocalSampleSize: number | null;
+  medianLocalSampleSize: number | null;
+  p95LocalSampleSize: number | null;
+  avgCiTestCount: number | null;
+  avgSampleRatio: number | null;
+  passSignal: {
+    localPassCommits: number;
+    ciPassWhenLocalPass: number;
+    rate: number | null;
+  };
+  failSignal: {
+    localFailCommits: number;
+    ciFailWhenLocalFail: number;
+    rate: number | null;
+  };
+  misses: {
+    localPassButCiFail: number;
+    localFailButCiPass: number;
+    falseNegativeRate: number | null;
+    falsePositiveRate: number | null;
+  };
+  confusionMatrix: {
+    truePositive: number;
+    falsePositive: number;
+    falseNegative: number;
+    trueNegative: number;
+  };
+}
+
+interface CommitSignalRow {
+  commit_sha: string;
+  run_kind: "local" | "ci";
+  run_count: number;
+  distinct_tests: number;
+  failure_signals: number;
+}
+
+interface CommitSignal {
+  commitSha: string;
+  runKind: "local" | "ci";
+  runCount: number;
+  distinctTests: number;
+  failureSignals: number;
+}
+
+function roundMetric(value: number): number {
+  return Number(value.toFixed(1));
+}
+
+function percentileNearestRank(values: number[], percentile: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.max(1, Math.ceil(percentile * sorted.length));
+  return sorted[rank - 1] ?? null;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[middle] ?? null;
+  }
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+function toRate(numerator: number, denominator: number): number | null {
+  if (denominator === 0) return null;
+  return roundMetric((numerator * 100) / denominator);
+}
+
+function buildPredictiveSignalSummary(
+  localCommits: number,
+  ciCommits: number,
+): PredictiveSignalSummary {
+  return {
+    rate: toRate(ciCommits, localCommits),
+  };
+}
+
+function buildSamplingKpi(rows: CommitSignal[]): SamplingKpiReport {
+  const localByCommit = new Map<string, CommitSignal>();
+  const ciByCommit = new Map<string, CommitSignal>();
+
+  for (const row of rows) {
+    if (row.runKind === "local") {
+      localByCommit.set(row.commitSha, row);
+    } else {
+      ciByCommit.set(row.commitSha, row);
+    }
+  }
+
+  const localOnlyCommits = [...localByCommit.keys()].filter((commitSha) => !ciByCommit.has(commitSha)).length;
+  const ciOnlyCommits = [...ciByCommit.keys()].filter((commitSha) => !localByCommit.has(commitSha)).length;
+
+  const sampleSizes: number[] = [];
+  const ciTestCounts: number[] = [];
+  const sampleRatios: number[] = [];
+
+  let localPassCommits = 0;
+  let ciPassWhenLocalPass = 0;
+  let localFailCommits = 0;
+  let ciFailWhenLocalFail = 0;
+  let localPassButCiFail = 0;
+  let localFailButCiPass = 0;
+  let truePositive = 0;
+  let falsePositive = 0;
+  let falseNegative = 0;
+  let trueNegative = 0;
+
+  const matchedCommitShas = [...localByCommit.keys()].filter((commitSha) => ciByCommit.has(commitSha));
+  for (const commitSha of matchedCommitShas) {
+    const local = localByCommit.get(commitSha)!;
+    const ci = ciByCommit.get(commitSha)!;
+    const localFailed = local.failureSignals > 0;
+    const ciFailed = ci.failureSignals > 0;
+
+    sampleSizes.push(local.distinctTests);
+    ciTestCounts.push(ci.distinctTests);
+    if (ci.distinctTests > 0) {
+      sampleRatios.push((local.distinctTests / ci.distinctTests) * 100);
+    }
+
+    if (localFailed) {
+      localFailCommits++;
+      if (ciFailed) {
+        ciFailWhenLocalFail++;
+        truePositive++;
+      } else {
+        localFailButCiPass++;
+        falsePositive++;
+      }
+      continue;
+    }
+
+    localPassCommits++;
+    if (ciFailed) {
+      localPassButCiFail++;
+      falseNegative++;
+    } else {
+      ciPassWhenLocalPass++;
+      trueNegative++;
+    }
+  }
+
+  const passSignal = buildPredictiveSignalSummary(localPassCommits, ciPassWhenLocalPass);
+  const failSignal = buildPredictiveSignalSummary(localFailCommits, ciFailWhenLocalFail);
+
+  return {
+    matchedCommits: matchedCommitShas.length,
+    localOnlyCommits,
+    ciOnlyCommits,
+    avgLocalSampleSize: sampleSizes.length > 0
+      ? roundMetric(sampleSizes.reduce((sum, value) => sum + value, 0) / sampleSizes.length)
+      : null,
+    medianLocalSampleSize: sampleSizes.length > 0
+      ? roundMetric(median(sampleSizes) ?? 0)
+      : null,
+    p95LocalSampleSize: sampleSizes.length > 0
+      ? roundMetric(percentileNearestRank(sampleSizes, 0.95) ?? 0)
+      : null,
+    avgCiTestCount: ciTestCounts.length > 0
+      ? roundMetric(ciTestCounts.reduce((sum, value) => sum + value, 0) / ciTestCounts.length)
+      : null,
+    avgSampleRatio: sampleRatios.length > 0
+      ? roundMetric(sampleRatios.reduce((sum, value) => sum + value, 0) / sampleRatios.length)
+      : null,
+    passSignal: {
+      localPassCommits,
+      ciPassWhenLocalPass,
+      rate: passSignal.rate,
+    },
+    failSignal: {
+      localFailCommits,
+      ciFailWhenLocalFail,
+      rate: failSignal.rate,
+    },
+    misses: {
+      localPassButCiFail,
+      localFailButCiPass,
+      falseNegativeRate: toRate(localPassButCiFail, localPassCommits),
+      falsePositiveRate: toRate(localFailButCiPass, localFailCommits),
+    },
+    confusionMatrix: {
+      truePositive,
+      falsePositive,
+      falseNegative,
+      trueNegative,
+    },
+  };
 }
 
 export async function runEval(opts: { store: MetricStore; windowDays?: number }): Promise<EvalReport> {
@@ -117,6 +322,46 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
     WHERE first_failure IS NOT NULL
   `);
 
+  const commitSignalRows = await store.raw<CommitSignalRow>(`
+    WITH recent_results AS (
+      SELECT
+        wr.commit_sha,
+        wr.event,
+        wr.id AS workflow_run_id,
+        tr.test_id,
+        tr.suite,
+        tr.test_name,
+        tr.status,
+        tr.retry_count
+      FROM workflow_runs wr
+      INNER JOIN test_results tr ON tr.workflow_run_id = wr.id
+      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+    )
+    SELECT
+      commit_sha,
+      CASE
+        WHEN event IN ('local-import', 'actrun-local') THEN 'local'
+        ELSE 'ci'
+      END AS run_kind,
+      COUNT(DISTINCT workflow_run_id)::INTEGER AS run_count,
+      COUNT(DISTINCT COALESCE(NULLIF(test_id, ''), suite || '::' || test_name))::INTEGER AS distinct_tests,
+      COUNT(*) FILTER (
+        WHERE status IN ('failed', 'flaky')
+          OR (retry_count > 0 AND status = 'passed')
+      )::INTEGER AS failure_signals
+    FROM recent_results
+    GROUP BY commit_sha, run_kind
+  `, [windowDays.toString()]);
+  const samplingKpi = buildSamplingKpi(
+    commitSignalRows.map((row) => ({
+      commitSha: row.commit_sha,
+      runKind: row.run_kind,
+      runCount: row.run_count,
+      distinctTests: row.distinct_tests,
+      failureSignals: row.failure_signals,
+    })),
+  );
+
   // 4. Health Score
   const uniqueTests = statsRow?.unique_tests ?? 0;
   const stability = uniqueTests > 0
@@ -149,6 +394,7 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
       mttdDays: timingRow?.avg_mttd_days ?? null,
       mttrDays: timingRow?.avg_mttr_days ?? null,
     },
+    samplingKpi,
     healthScore,
   };
 }
@@ -199,6 +445,24 @@ export function formatEvalReport(report: EvalReport): string {
   lines.push(`  Avg MTTR:         ${res.mttrDays != null ? res.mttrDays + " days" : "N/A"}`);
   lines.push("");
 
+  // Sampling KPI
+  lines.push("## Sampling KPI");
+  const kpi = report.samplingKpi;
+  lines.push(`  Matched commits:          ${kpi.matchedCommits}`);
+  lines.push(`  Local-only commits:       ${kpi.localOnlyCommits}`);
+  lines.push(`  CI-only commits:          ${kpi.ciOnlyCommits}`);
+  lines.push(`  Avg local sample size N:  ${kpi.avgLocalSampleSize ?? "N/A"}`);
+  lines.push(`  Median local sample N:    ${kpi.medianLocalSampleSize ?? "N/A"}`);
+  lines.push(`  P95 local sample N:       ${kpi.p95LocalSampleSize ?? "N/A"}`);
+  lines.push(`  Avg CI test count:        ${kpi.avgCiTestCount ?? "N/A"}`);
+  lines.push(`  Avg sample ratio:         ${kpi.avgSampleRatio != null ? `${kpi.avgSampleRatio}% of CI` : "N/A"}`);
+  lines.push(`  CI pass when local pass:  ${kpi.passSignal.rate != null ? `${kpi.passSignal.rate}% (${kpi.passSignal.ciPassWhenLocalPass}/${kpi.passSignal.localPassCommits})` : "N/A"}`);
+  lines.push(`  CI fail when local fail:  ${kpi.failSignal.rate != null ? `${kpi.failSignal.rate}% (${kpi.failSignal.ciFailWhenLocalFail}/${kpi.failSignal.localFailCommits})` : "N/A"}`);
+  lines.push(`  False negatives:          ${kpi.misses.localPassButCiFail}${kpi.misses.falseNegativeRate != null ? ` (${kpi.misses.falseNegativeRate}%)` : ""}`);
+  lines.push(`  False positives:          ${kpi.misses.localFailButCiPass}${kpi.misses.falsePositiveRate != null ? ` (${kpi.misses.falsePositiveRate}%)` : ""}`);
+  lines.push(`  Confusion matrix:         TP=${kpi.confusionMatrix.truePositive} FP=${kpi.confusionMatrix.falsePositive} FN=${kpi.confusionMatrix.falseNegative} TN=${kpi.confusionMatrix.trueNegative}`);
+  lines.push("");
+
   // Recommendations
   lines.push("## Recommendations");
   if (d.avgRunsPerTest < 5) {
@@ -215,6 +479,18 @@ export function formatEvalReport(report: EvalReport): string {
   }
   if (d.totalResults === 0) {
     lines.push("  - No data yet. Run `flaker collect` or `flaker import` to get started");
+  }
+  if (kpi.matchedCommits === 0 && d.totalResults > 0) {
+    lines.push("  - No matched local/CI commit history yet. Import local runs with the same commit SHA to measure sampling quality");
+  }
+  if (kpi.passSignal.rate != null && kpi.passSignal.rate < 95) {
+    lines.push("  - Local pass is not yet a strong CI predictor. Increase sample size or improve affected mapping");
+  }
+  if (kpi.failSignal.rate != null && kpi.failSignal.rate < 50) {
+    lines.push("  - Local failures are weak CI signals. Check for noisy tests or mismatched local/CI environments");
+  }
+  if (kpi.avgSampleRatio != null && kpi.avgSampleRatio > 50) {
+    lines.push("  - Local sample size is large relative to CI. Tighten affected rules or reduce default N");
   }
 
   return lines.join("\n");
