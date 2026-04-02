@@ -23,6 +23,7 @@ import {
 import { runEval, formatEvalReport } from "./commands/eval.js";
 import { runReason, formatReasoningReport } from "./commands/reason.js";
 import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
+import { runDoctor, formatDoctorReport } from "./commands/doctor.js";
 import { DuckDBStore } from "./storage/duckdb.js";
 
 const program = new Command();
@@ -75,7 +76,19 @@ program
           created: `>=${created.toISOString().split("T")[0]}`,
           per_page: 100,
         });
-        return response.data;
+        return {
+          total_count: response.data.total_count,
+          workflow_runs: response.data.workflow_runs.map((run) => ({
+            id: run.id,
+            head_branch: run.head_branch ?? "",
+            head_sha: run.head_sha,
+            event: run.event,
+            conclusion: run.conclusion ?? "",
+            created_at: run.created_at,
+            run_started_at: run.run_started_at ?? run.created_at,
+            updated_at: run.updated_at,
+          })),
+        };
       },
       async listArtifacts(runId: number) {
         const response = await octokit.actions.listWorkflowRunArtifacts({
@@ -517,6 +530,18 @@ program
       console.log(formatSelfEvalReport(report));
     }
     process.exit(report.overallScore >= 80 ? 0 : 1);
+  });
+
+// --- doctor ---
+program
+  .command("doctor")
+  .description("Check local flaker runtime requirements")
+  .action(async () => {
+    const report = await runDoctor(process.cwd(), {
+      createStore: () => new DuckDBStore(":memory:"),
+    });
+    console.log(formatDoctorReport(report));
+    process.exit(report.ok ? 0 : 1);
   });
 
 program.parse();

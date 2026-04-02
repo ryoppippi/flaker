@@ -28,11 +28,8 @@ const DEFAULT_CONFIG: FlakerConfig = {
   flaky: { window_days: 14, detection_threshold: 0.1 },
 };
 
-function deepMerge<T extends Record<string, unknown>>(
-  target: T,
-  source: Record<string, unknown>,
-): T {
-  const result = { ...target } as Record<string, unknown>;
+function deepMerge<T>(target: T, source: Record<string, unknown>): T {
+  const result = { ...(target as Record<string, unknown>) };
   for (const key of Object.keys(source)) {
     const sv = source[key];
     const tv = result[key];
