@@ -71,6 +71,26 @@ fn average_ratio(numerators : Array[Int], denominators : Array[Int]) -> Double? 
 }
 
 ///|
+fn average_duration_delta_minutes(
+  local_durations : Array[Int],
+  ci_durations : Array[Int],
+) -> Double? {
+  if local_durations.length() == 0 || ci_durations.length() == 0 {
+    return None
+  }
+  let mut total = 0.0
+  let mut count = 0
+  for i in 0..<local_durations.length() {
+    total += (ci_durations[i] - local_durations[i]).to_double() / 60000.0
+    count += 1
+  }
+  if count == 0 {
+    return None
+  }
+  Some(round_metric(total / count.to_double()))
+}
+
+///|
 pub fn build_sampling_kpi(
   rows : Array[@types.EvalCommitSignalInput],
 ) -> @types.SamplingKpiOutput {
@@ -95,7 +115,11 @@ pub fn build_sampling_kpi(
 
   let matched_commit_shas : Array[String] = []
   let mut local_only_commits = 0
+  let mut fallback_runs = 0
   for commit_sha in local_order {
+    if local_by_commit[commit_sha].fallback_used {
+      fallback_runs += 1
+    }
     if ci_by_commit.contains(commit_sha) {
       matched_commit_shas.push(commit_sha)
     } else {
@@ -112,6 +136,8 @@ pub fn build_sampling_kpi(
 
   let sample_sizes : Array[Int] = []
   let ci_test_counts : Array[Int] = []
+  let local_durations : Array[Int] = []
+  let ci_durations : Array[Int] = []
 
   let mut local_pass_commits = 0
   let mut ci_pass_when_local_pass = 0
@@ -132,6 +158,13 @@ pub fn build_sampling_kpi(
 
     sample_sizes.push(local_signal.distinct_tests)
     ci_test_counts.push(ci.distinct_tests)
+    match (local_signal.duration_ms, ci.duration_ms) {
+      (Some(local_duration), Some(ci_duration)) => {
+        local_durations.push(local_duration)
+        ci_durations.push(ci_duration)
+      }
+      _ => ()
+    }
 
     if local_failed {
       local_fail_commits += 1
@@ -169,6 +202,9 @@ pub fn build_sampling_kpi(
     },
     avg_ci_test_count: average(ci_test_counts),
     avg_sample_ratio: average_ratio(sample_sizes, ci_test_counts),
+    avg_saved_minutes: average_duration_delta_minutes(local_durations, ci_durations),
+    fallback_runs,
+    fallback_rate: to_rate(fallback_runs, local_order.length()),
     pass_signal: @types.SamplingKpiSignalOutput::{
       local_commits: local_pass_commits,
       ci_when_local: ci_pass_when_local_pass,

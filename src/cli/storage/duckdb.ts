@@ -14,6 +14,8 @@ import type {
   VariantFlakyScore,
   TestSelector,
   CollectedArtifactRecord,
+  SamplingRunRecord,
+  SamplingRunTestRecord,
 } from "./types.js";
 
 export class DuckDBStore implements MetricStore {
@@ -125,6 +127,79 @@ export class DuckDBStore implements MetricStore {
         record.collectedAt ?? new Date(),
       ],
     );
+  }
+
+  async recordSamplingRun(run: SamplingRunRecord): Promise<number> {
+    const [idRow] = await this.all(
+      `SELECT nextval('sampling_runs_id_seq')::BIGINT AS id`,
+    );
+    const id = Number(idRow.id);
+    await this.run(
+      `INSERT INTO sampling_runs (
+         id,
+         commit_sha,
+         command_kind,
+         strategy,
+         requested_count,
+         requested_percentage,
+         seed,
+         changed_files,
+         candidate_count,
+         selected_count,
+         sample_ratio,
+         estimated_saved_tests,
+         estimated_saved_minutes,
+         fallback_reason,
+         duration_ms,
+         created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        run.commitSha ?? null,
+        run.commandKind,
+        run.strategy,
+        run.requestedCount ?? null,
+        run.requestedPercentage ?? null,
+        run.seed ?? null,
+        run.changedFiles ? JSON.stringify(run.changedFiles) : null,
+        run.candidateCount,
+        run.selectedCount,
+        run.sampleRatio ?? null,
+        run.estimatedSavedTests ?? null,
+        run.estimatedSavedMinutes ?? null,
+        run.fallbackReason ?? null,
+        run.durationMs ?? null,
+        run.createdAt ?? new Date(),
+      ],
+    );
+    return id;
+  }
+
+  async recordSamplingRunTests(records: SamplingRunTestRecord[]): Promise<void> {
+    for (const record of records) {
+      await this.run(
+        `INSERT INTO sampling_run_tests (
+           sampling_run_id,
+           ordinal,
+           test_id,
+           task_id,
+           suite,
+           test_name,
+           filter_text
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          record.samplingRunId,
+          record.ordinal,
+          record.testId ?? null,
+          record.taskId ?? null,
+          record.suite,
+          record.testName,
+          record.filter ?? null,
+        ],
+      );
+    }
   }
 
   async insertTestResults(results: TestResult[]): Promise<void> {

@@ -8,6 +8,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 2,
         failure_signals: 0,
+        duration_ms: Some(20000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-pass",
@@ -15,6 +17,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 4,
         failure_signals: 0,
+        duration_ms: Some(80000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fail",
@@ -22,6 +26,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 2,
         failure_signals: 1,
+        duration_ms: Some(25000),
+        fallback_used: true,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fail",
@@ -29,6 +35,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 4,
         failure_signals: 1,
+        duration_ms: Some(85000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fn",
@@ -36,6 +44,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 2,
         failure_signals: 0,
+        duration_ms: Some(30000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fn",
@@ -43,6 +53,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 4,
         failure_signals: 1,
+        duration_ms: Some(90000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fp",
@@ -50,6 +62,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 2,
         failure_signals: 1,
+        duration_ms: Some(35000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "commit-fp",
@@ -57,6 +71,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 4,
         failure_signals: 0,
+        duration_ms: Some(95000),
+        fallback_used: false,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "local-only",
@@ -64,6 +80,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 1,
         failure_signals: 0,
+        duration_ms: Some(10000),
+        fallback_used: true,
       },
       @types.EvalCommitSignalInput::{
         commit_sha: "ci-only",
@@ -71,6 +89,8 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
         run_count: 1,
         distinct_tests: 1,
         failure_signals: 0,
+        duration_ms: Some(20000),
+        fallback_used: false,
       },
     ],
   )
@@ -83,6 +103,9 @@ test "build_sampling_kpi computes confusion matrix and sample metrics" {
   assert_eq(report.p95_local_sample_size, Some(2.0))
   assert_eq(report.avg_ci_test_count, Some(4.0))
   assert_eq(report.avg_sample_ratio, Some(50.0))
+  assert_eq(report.avg_saved_minutes, Some(1.0))
+  assert_eq(report.fallback_runs, 2)
+  assert_eq(report.fallback_rate, Some(40.0))
   assert_eq(report.pass_signal.local_commits, 2)
   assert_eq(report.pass_signal.ci_when_local, 1)
   assert_eq(report.pass_signal.rate, Some(50.0))

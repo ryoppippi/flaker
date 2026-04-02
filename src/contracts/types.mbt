@@ -326,6 +326,8 @@ pub(all) struct EvalCommitSignalInput {
   run_count : Int
   distinct_tests : Int
   failure_signals : Int
+  duration_ms : Int?
+  fallback_used : Bool
 } derive(Eq, Show, FromJson, ToJson)
 
 ///|
@@ -361,6 +363,9 @@ pub(all) struct SamplingKpiOutput {
   p95_local_sample_size : Double?
   avg_ci_test_count : Double?
   avg_sample_ratio : Double?
+  avg_saved_minutes : Double?
+  fallback_runs : Int
+  fallback_rate : Double?
   pass_signal : SamplingKpiSignalOutput
   fail_signal : SamplingKpiSignalOutput
   misses : SamplingKpiMissesOutput

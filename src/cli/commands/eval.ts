@@ -43,6 +43,9 @@ interface SamplingKpiReport {
   p95LocalSampleSize: number | null;
   avgCiTestCount: number | null;
   avgSampleRatio: number | null;
+  avgSavedMinutes: number | null;
+  fallbackRuns: number;
+  fallbackRate: number | null;
   passSignal: {
     localPassCommits: number;
     ciPassWhenLocalPass: number;
@@ -73,6 +76,8 @@ interface CommitSignalRow {
   run_count: number;
   distinct_tests: number;
   failure_signals: number;
+  duration_ms: number | null;
+  fallback_used: boolean;
 }
 
 interface CommitSignal {
@@ -81,6 +86,8 @@ interface CommitSignal {
   runCount: number;
   distinctTests: number;
   failureSignals: number;
+  durationMs: number | null;
+  fallbackUsed: boolean;
 }
 
 interface EvalCommitSignalInput {
@@ -89,6 +96,8 @@ interface EvalCommitSignalInput {
   run_count: number;
   distinct_tests: number;
   failure_signals: number;
+  duration_ms: number | null;
+  fallback_used: boolean;
 }
 
 interface SamplingKpiSignalOutput {
@@ -120,6 +129,9 @@ interface SamplingKpiOutput {
   p95_local_sample_size: number | null;
   avg_ci_test_count: number | null;
   avg_sample_ratio: number | null;
+  avg_saved_minutes: number | null;
+  fallback_runs: number;
+  fallback_rate: number | null;
   pass_signal: SamplingKpiSignalOutput;
   fail_signal: SamplingKpiSignalOutput;
   misses: SamplingKpiMissesOutput;
@@ -165,6 +177,12 @@ function buildPredictiveSignalSummary(
   };
 }
 
+function averageDurationDeltaMinutes(rows: Array<{ localDurationMs: number; ciDurationMs: number }>): number | null {
+  if (rows.length === 0) return null;
+  const total = rows.reduce((sum, row) => sum + ((row.ciDurationMs - row.localDurationMs) / 60_000), 0);
+  return roundMetric(total / rows.length);
+}
+
 function buildSamplingKpiFallback(rows: CommitSignal[]): SamplingKpiReport {
   const localByCommit = new Map<string, CommitSignal>();
   const ciByCommit = new Map<string, CommitSignal>();
@@ -183,6 +201,8 @@ function buildSamplingKpiFallback(rows: CommitSignal[]): SamplingKpiReport {
   const sampleSizes: number[] = [];
   const ciTestCounts: number[] = [];
   const sampleRatios: number[] = [];
+  const savedMinutesRows: Array<{ localDurationMs: number; ciDurationMs: number }> = [];
+  const fallbackRuns = rows.filter((row) => row.runKind === "local" && row.fallbackUsed).length;
 
   let localPassCommits = 0;
   let ciPassWhenLocalPass = 0;
@@ -206,6 +226,12 @@ function buildSamplingKpiFallback(rows: CommitSignal[]): SamplingKpiReport {
     ciTestCounts.push(ci.distinctTests);
     if (ci.distinctTests > 0) {
       sampleRatios.push((local.distinctTests / ci.distinctTests) * 100);
+    }
+    if (local.durationMs != null && ci.durationMs != null) {
+      savedMinutesRows.push({
+        localDurationMs: local.durationMs,
+        ciDurationMs: ci.durationMs,
+      });
     }
 
     if (localFailed) {
@@ -252,6 +278,9 @@ function buildSamplingKpiFallback(rows: CommitSignal[]): SamplingKpiReport {
     avgSampleRatio: sampleRatios.length > 0
       ? roundMetric(sampleRatios.reduce((sum, value) => sum + value, 0) / sampleRatios.length)
       : null,
+    avgSavedMinutes: averageDurationDeltaMinutes(savedMinutesRows),
+    fallbackRuns,
+    fallbackRate: toRate(fallbackRuns, localByCommit.size),
     passSignal: {
       localPassCommits,
       ciPassWhenLocalPass,
@@ -284,6 +313,8 @@ function toCoreCommitSignal(row: CommitSignal): EvalCommitSignalInput {
     run_count: row.runCount,
     distinct_tests: row.distinctTests,
     failure_signals: row.failureSignals,
+    duration_ms: row.durationMs,
+    fallback_used: row.fallbackUsed,
   };
 }
 
@@ -297,6 +328,9 @@ function fromCoreSamplingKpi(output: SamplingKpiOutput): SamplingKpiReport {
     p95LocalSampleSize: output.p95_local_sample_size,
     avgCiTestCount: output.avg_ci_test_count,
     avgSampleRatio: output.avg_sample_ratio,
+    avgSavedMinutes: output.avg_saved_minutes,
+    fallbackRuns: output.fallback_runs,
+    fallbackRate: output.fallback_rate,
     passSignal: {
       localPassCommits: output.pass_signal.local_commits,
       ciPassWhenLocalPass: output.pass_signal.ci_when_local,
@@ -322,18 +356,34 @@ function fromCoreSamplingKpi(output: SamplingKpiOutput): SamplingKpiReport {
   };
 }
 
+function isExtendedSamplingKpiOutput(value: unknown): value is SamplingKpiOutput {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.matched_commits === "number" &&
+    "avg_saved_minutes" in candidate &&
+    "fallback_runs" in candidate &&
+    "fallback_rate" in candidate
+  );
+}
+
 async function loadSamplingKpiBuilder(): Promise<
   (rows: CommitSignal[]) => SamplingKpiReport
 > {
   try {
     const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as EvalCoreExports;
     if (typeof mod.build_sampling_kpi_json === "function") {
-      return (rows) =>
-        fromCoreSamplingKpi(
-          JSON.parse(
-            mod.build_sampling_kpi_json!(JSON.stringify(rows.map(toCoreCommitSignal))),
-          ) as SamplingKpiOutput,
-        );
+      return (rows) => {
+        const parsed = JSON.parse(
+          mod.build_sampling_kpi_json!(JSON.stringify(rows.map(toCoreCommitSignal))),
+        ) as unknown;
+        if (isExtendedSamplingKpiOutput(parsed)) {
+          return fromCoreSamplingKpi(parsed);
+        }
+        return buildSamplingKpiFallback(rows);
+      };
     }
   } catch {
     // Fall back to the TypeScript reducer when the MoonBit build is unavailable.
@@ -343,6 +393,92 @@ async function loadSamplingKpiBuilder(): Promise<
 }
 
 const buildSamplingKpi = await loadSamplingKpiBuilder();
+
+export async function runSamplingKpi(
+  opts: { store: MetricStore; windowDays?: number },
+): Promise<SamplingKpiReport> {
+  const { store } = opts;
+  const windowDays = opts.windowDays ?? 30;
+  const commitSignalRows = await store.raw<CommitSignalRow>(`
+    WITH recent_results AS (
+      SELECT
+        wr.commit_sha,
+        wr.event,
+        wr.id AS workflow_run_id,
+        wr.duration_ms AS workflow_duration_ms,
+        tr.test_id,
+        tr.suite,
+        tr.test_name,
+        tr.status,
+        tr.retry_count
+      FROM workflow_runs wr
+      INNER JOIN test_results tr ON tr.workflow_run_id = wr.id
+      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+    ),
+    aggregated_results AS (
+      SELECT
+        commit_sha,
+        CASE
+          WHEN event IN ('local-import', 'actrun-local', 'flaker-local-run') THEN 'local'
+          ELSE 'ci'
+        END AS run_kind,
+        COUNT(DISTINCT workflow_run_id)::INTEGER AS run_count,
+        COUNT(DISTINCT COALESCE(NULLIF(test_id, ''), suite || '::' || test_name))::INTEGER AS distinct_tests,
+        COUNT(*) FILTER (
+          WHERE status IN ('failed', 'flaky')
+            OR (retry_count > 0 AND status = 'passed')
+        )::INTEGER AS failure_signals,
+        MAX(workflow_duration_ms)::INTEGER AS duration_ms
+      FROM recent_results
+      GROUP BY commit_sha, run_kind
+    ),
+    recent_sampling_runs AS (
+      SELECT
+        id,
+        commit_sha,
+        selected_count,
+        duration_ms,
+        fallback_reason,
+        ROW_NUMBER() OVER (PARTITION BY commit_sha ORDER BY created_at DESC, id DESC) AS row_num
+      FROM sampling_runs
+      WHERE command_kind = 'run'
+        AND created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+    )
+    SELECT
+      ar.commit_sha,
+      ar.run_kind,
+      ar.run_count,
+      CASE
+        WHEN ar.run_kind = 'local' AND rs.selected_count IS NOT NULL THEN rs.selected_count
+        ELSE ar.distinct_tests
+      END::INTEGER AS distinct_tests,
+      ar.failure_signals,
+      CASE
+        WHEN ar.run_kind = 'local' AND rs.duration_ms IS NOT NULL THEN rs.duration_ms
+        ELSE ar.duration_ms
+      END::INTEGER AS duration_ms,
+      CASE
+        WHEN ar.run_kind = 'local' THEN COALESCE(rs.fallback_reason IS NOT NULL, FALSE)
+        ELSE FALSE
+      END AS fallback_used
+    FROM aggregated_results ar
+    LEFT JOIN recent_sampling_runs rs
+      ON ar.run_kind = 'local'
+     AND rs.commit_sha = ar.commit_sha
+     AND rs.row_num = 1
+  `, [windowDays.toString(), windowDays.toString()]);
+  return buildSamplingKpi(
+    commitSignalRows.map((row) => ({
+      commitSha: row.commit_sha,
+      runKind: row.run_kind,
+      runCount: row.run_count,
+      distinctTests: row.distinct_tests,
+      failureSignals: row.failure_signals,
+      durationMs: row.duration_ms,
+      fallbackUsed: row.fallback_used,
+    })),
+  );
+}
 
 export async function runEval(opts: { store: MetricStore; windowDays?: number }): Promise<EvalReport> {
   const { store } = opts;
@@ -437,45 +573,7 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
     WHERE first_failure IS NOT NULL
   `);
 
-  const commitSignalRows = await store.raw<CommitSignalRow>(`
-    WITH recent_results AS (
-      SELECT
-        wr.commit_sha,
-        wr.event,
-        wr.id AS workflow_run_id,
-        tr.test_id,
-        tr.suite,
-        tr.test_name,
-        tr.status,
-        tr.retry_count
-      FROM workflow_runs wr
-      INNER JOIN test_results tr ON tr.workflow_run_id = wr.id
-      WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
-    )
-    SELECT
-      commit_sha,
-      CASE
-        WHEN event IN ('local-import', 'actrun-local') THEN 'local'
-        ELSE 'ci'
-      END AS run_kind,
-      COUNT(DISTINCT workflow_run_id)::INTEGER AS run_count,
-      COUNT(DISTINCT COALESCE(NULLIF(test_id, ''), suite || '::' || test_name))::INTEGER AS distinct_tests,
-      COUNT(*) FILTER (
-        WHERE status IN ('failed', 'flaky')
-          OR (retry_count > 0 AND status = 'passed')
-      )::INTEGER AS failure_signals
-    FROM recent_results
-    GROUP BY commit_sha, run_kind
-  `, [windowDays.toString()]);
-  const samplingKpi = buildSamplingKpi(
-    commitSignalRows.map((row) => ({
-      commitSha: row.commit_sha,
-      runKind: row.run_kind,
-      runCount: row.run_count,
-      distinctTests: row.distinct_tests,
-      failureSignals: row.failure_signals,
-    })),
-  );
+  const samplingKpi = await runSamplingKpi({ store, windowDays });
 
   // 4. Health Score
   const uniqueTests = statsRow?.unique_tests ?? 0;
@@ -571,6 +669,8 @@ export function formatEvalReport(report: EvalReport): string {
   lines.push(`  P95 local sample N:       ${kpi.p95LocalSampleSize ?? "N/A"}`);
   lines.push(`  Avg CI test count:        ${kpi.avgCiTestCount ?? "N/A"}`);
   lines.push(`  Avg sample ratio:         ${kpi.avgSampleRatio != null ? `${kpi.avgSampleRatio}% of CI` : "N/A"}`);
+  lines.push(`  Avg saved minutes:        ${kpi.avgSavedMinutes != null ? `${kpi.avgSavedMinutes} min` : "N/A"}`);
+  lines.push(`  Fallback rate:            ${kpi.fallbackRate != null ? `${kpi.fallbackRate}% (${kpi.fallbackRuns})` : "N/A"}`);
   lines.push(`  CI pass when local pass:  ${kpi.passSignal.rate != null ? `${kpi.passSignal.rate}% (${kpi.passSignal.ciPassWhenLocalPass}/${kpi.passSignal.localPassCommits})` : "N/A"}`);
   lines.push(`  CI fail when local fail:  ${kpi.failSignal.rate != null ? `${kpi.failSignal.rate}% (${kpi.failSignal.ciFailWhenLocalFail}/${kpi.failSignal.localFailCommits})` : "N/A"}`);
   lines.push(`  False negatives:          ${kpi.misses.localPassButCiFail}${kpi.misses.falseNegativeRate != null ? ` (${kpi.misses.falseNegativeRate}%)` : ""}`);

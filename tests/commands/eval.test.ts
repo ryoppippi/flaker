@@ -187,9 +187,10 @@ describe("eval command", () => {
       const ciRunId = runId++;
       await store.insertWorkflowRun(
         makeRun(localRunId, commit.commitSha, now, {
-          event: "local-import",
+          event: "flaker-local-run",
           branch: "local",
           status: "completed",
+          durationMs: 20_000 + (runId - 2) * 5_000,
         }),
       );
       await store.insertWorkflowRun(
@@ -197,8 +198,26 @@ describe("eval command", () => {
           event: "push",
           branch: "main",
           status: "completed",
+          durationMs: 80_000 + (runId - 3) * 5_000,
         }),
       );
+      await store.recordSamplingRun({
+        commitSha: commit.commitSha,
+        commandKind: "run",
+        strategy: "hybrid",
+        requestedCount: 2,
+        requestedPercentage: null,
+        seed: 42,
+        changedFiles: ["src/example.ts"],
+        candidateCount: 4,
+        selectedCount: 2,
+        sampleRatio: 50,
+        estimatedSavedTests: 2,
+        estimatedSavedMinutes: 1,
+        fallbackReason: commit.commitSha === "commit-fail" ? "cold-start-listed-tests" : null,
+        durationMs: 20_000 + (runId - 2) * 5_000,
+        createdAt: now,
+      });
 
       await store.insertTestResults(
         localTests.map((testName, index) =>
@@ -228,11 +247,29 @@ describe("eval command", () => {
 
     await store.insertWorkflowRun(
       makeRun(runId++, "local-only", now, {
-        event: "actrun-local",
+        event: "flaker-local-run",
         branch: "local",
         status: "completed",
+        durationMs: 10_000,
       }),
     );
+    await store.recordSamplingRun({
+      commitSha: "local-only",
+      commandKind: "run",
+      strategy: "hybrid",
+      requestedCount: 1,
+      requestedPercentage: null,
+      seed: 42,
+      changedFiles: ["src/orphan.ts"],
+      candidateCount: 1,
+      selectedCount: 1,
+      sampleRatio: 100,
+      estimatedSavedTests: 0,
+      estimatedSavedMinutes: 0,
+      fallbackReason: "cold-start-listed-tests",
+      durationMs: 10_000,
+      createdAt: now,
+    });
     await store.insertTestResults([
       makeResult(runId - 1, "suite-local", "orphan-local", "passed", "local-only", now),
     ]);
@@ -258,6 +295,9 @@ describe("eval command", () => {
     expect(report.samplingKpi.p95LocalSampleSize).toBe(2);
     expect(report.samplingKpi.avgCiTestCount).toBe(4);
     expect(report.samplingKpi.avgSampleRatio).toBe(50);
+    expect(report.samplingKpi.avgSavedMinutes).toBe(0.9);
+    expect(report.samplingKpi.fallbackRuns).toBe(2);
+    expect(report.samplingKpi.fallbackRate).toBe(40);
     expect(report.samplingKpi.passSignal.localPassCommits).toBe(2);
     expect(report.samplingKpi.passSignal.ciPassWhenLocalPass).toBe(1);
     expect(report.samplingKpi.passSignal.rate).toBe(50);
@@ -272,5 +312,17 @@ describe("eval command", () => {
     expect(report.samplingKpi.confusionMatrix.falsePositive).toBe(1);
     expect(report.samplingKpi.confusionMatrix.falseNegative).toBe(1);
     expect(report.samplingKpi.confusionMatrix.trueNegative).toBe(1);
+  });
+
+  it("formats saved minutes and fallback rate in the report", async () => {
+    const report = await runEval({ store });
+    report.samplingKpi.avgSavedMinutes = 12.5;
+    report.samplingKpi.fallbackRuns = 3;
+    report.samplingKpi.fallbackRate = 15;
+
+    const formatted = formatEvalReport(report);
+
+    expect(formatted).toContain("Avg saved minutes:");
+    expect(formatted).toContain("Fallback rate:");
   });
 });

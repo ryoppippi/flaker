@@ -13,7 +13,10 @@ import {
   type GitHubClient,
 } from "./commands/collect.js";
 import { runFlaky, formatFlakyTable, runFlakyTrend, formatFlakyTrend, runTrueFlaky, formatTrueFlakyTable } from "./commands/flaky.js";
-import { runSample } from "./commands/sample.js";
+import {
+  formatSamplingSummary,
+  planSample,
+} from "./commands/sample.js";
 import { runTests } from "./commands/run.js";
 import {
   parseSampleCount,
@@ -29,7 +32,11 @@ import {
   runQuarantine,
   formatQuarantineTable,
 } from "./commands/quarantine.js";
-import { runEval, formatEvalReport } from "./commands/eval.js";
+import {
+  runEval,
+  formatEvalReport,
+  runSamplingKpi,
+} from "./commands/eval.js";
 import { runReason, formatReasoningReport } from "./commands/reason.js";
 import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
 import { runDoctor, formatDoctorReport } from "./commands/doctor.js";
@@ -59,6 +66,7 @@ import { createRunner } from "./runners/index.js";
 import { resolveTestIdentity } from "./identity.js";
 import { toStoredTestResult } from "./storage/test-result-mapper.js";
 import { createResolver } from "./resolvers/index.js";
+import { resolveCurrentCommitSha } from "./core/git.js";
 import {
   formatQuarantineManifestReport,
   loadQuarantineManifest,
@@ -149,6 +157,66 @@ function parseChangedFiles(input?: string): string[] | undefined {
     .map((value) => value.trim())
     .filter(Boolean);
   return files && files.length > 0 ? files : undefined;
+}
+
+async function recordSamplingRunFromMeta(
+  store: DuckDBStore,
+  params: {
+    commitSha?: string | null;
+    commandKind: "sample" | "run";
+    summary: {
+      strategy: string;
+      requestedCount: number | null;
+      requestedPercentage: number | null;
+      seed: number;
+      changedFiles: string[] | null;
+      candidateCount: number;
+      selectedCount: number;
+      sampleRatio: number | null;
+      estimatedSavedTests: number;
+      estimatedSavedMinutes: number | null;
+      fallbackReason: string | null;
+    };
+    tests: Array<{
+      suite: string;
+      test_name?: string;
+      testName?: string;
+      task_id?: string | null;
+      taskId?: string | null;
+      filter?: string | null;
+      test_id?: string | null;
+      testId?: string | null;
+    }>;
+    durationMs?: number | null;
+  },
+): Promise<void> {
+  const samplingRunId = await store.recordSamplingRun({
+    commitSha: params.commitSha ?? null,
+    commandKind: params.commandKind,
+    strategy: params.summary.strategy,
+    requestedCount: params.summary.requestedCount,
+    requestedPercentage: params.summary.requestedPercentage,
+    seed: params.summary.seed,
+    changedFiles: params.summary.changedFiles,
+    candidateCount: params.summary.candidateCount,
+    selectedCount: params.summary.selectedCount,
+    sampleRatio: params.summary.sampleRatio,
+    estimatedSavedTests: params.summary.estimatedSavedTests,
+    estimatedSavedMinutes: params.summary.estimatedSavedMinutes,
+    fallbackReason: params.summary.fallbackReason,
+    durationMs: params.durationMs ?? null,
+  });
+  await store.recordSamplingRunTests(
+    params.tests.map((test, ordinal) => ({
+      samplingRunId,
+      ordinal,
+      suite: test.suite,
+      testName: test.testName ?? test.test_name ?? "",
+      taskId: test.taskId ?? test.task_id ?? null,
+      filter: test.filter ?? null,
+      testId: test.testId ?? test.test_id ?? null,
+    })),
+  );
 }
 
 async function createConfiguredResolver(
@@ -338,7 +406,8 @@ program
           resolver = await createConfiguredResolver(process.cwd(), config.affected);
         }
 
-        const sampled = await runSample({
+        const kpi = await runSamplingKpi({ store });
+        const samplePlan = await planSample({
           store,
           mode,
           count: parseSampleCount(opts.count),
@@ -349,7 +418,19 @@ program
           quarantineManifestEntries: manifest?.entries,
           listedTests,
         });
-        for (const t of sampled) {
+        await recordSamplingRunFromMeta(store, {
+          commitSha: resolveCurrentCommitSha(process.cwd()),
+          commandKind: "sample",
+          summary: samplePlan.summary,
+          tests: samplePlan.sampled,
+        });
+        console.log(formatSamplingSummary(samplePlan.summary, {
+          ciPassWhenLocalPassRate: kpi.passSignal.rate,
+        }));
+        if (samplePlan.sampled.length > 0) {
+          console.log("");
+        }
+        for (const t of samplePlan.sampled) {
           console.log(`${t.suite} > ${t.test_name}`);
         }
       } finally {
@@ -440,6 +521,8 @@ program
           }
           return;
         }
+        const commitSha = resolveCurrentCommitSha(cwd) ?? `local-${Date.now()}`;
+        const kpi = await runSamplingKpi({ store });
         const runResult = await runTests({
           store,
           runner: createRunner(config.runner),
@@ -451,6 +534,37 @@ program
           skipQuarantined: opts.skipQuarantined,
           quarantineManifestEntries: manifest?.entries,
           cwd,
+        });
+        console.log(formatSamplingSummary(runResult.samplingSummary, {
+          ciPassWhenLocalPassRate: kpi.passSignal.rate,
+        }));
+        const workflowRunId = Date.now();
+        const createdAt = new Date();
+        await store.insertWorkflowRun({
+          id: workflowRunId,
+          repo: `${config.repo.owner}/${config.repo.name}`,
+          branch: "local",
+          commitSha,
+          event: "flaker-local-run",
+          status: runResult.exitCode === 0 ? "success" : "failure",
+          createdAt,
+          durationMs: runResult.durationMs,
+        });
+        await store.insertTestResults(
+          runResult.results.map((tc) =>
+            toStoredTestResult(tc, {
+              workflowRunId,
+              commitSha,
+              createdAt,
+            }),
+          ),
+        );
+        await recordSamplingRunFromMeta(store, {
+          commitSha,
+          commandKind: "run",
+          summary: runResult.samplingSummary,
+          tests: runResult.sampledTests,
+          durationMs: runResult.durationMs,
         });
         if (runResult.exitCode !== 0) {
           process.exit(1);

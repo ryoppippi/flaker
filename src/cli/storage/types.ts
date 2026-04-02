@@ -105,6 +105,34 @@ export interface CollectedArtifactRecord {
   collectedAt?: Date;
 }
 
+export interface SamplingRunRecord {
+  commitSha?: string | null;
+  commandKind: "sample" | "run";
+  strategy: string;
+  requestedCount?: number | null;
+  requestedPercentage?: number | null;
+  seed?: number | null;
+  changedFiles?: string[] | null;
+  candidateCount: number;
+  selectedCount: number;
+  sampleRatio?: number | null;
+  estimatedSavedTests?: number | null;
+  estimatedSavedMinutes?: number | null;
+  fallbackReason?: string | null;
+  durationMs?: number | null;
+  createdAt?: Date;
+}
+
+export interface SamplingRunTestRecord {
+  samplingRunId: number;
+  ordinal: number;
+  suite: string;
+  testName: string;
+  taskId?: string | null;
+  filter?: string | null;
+  testId?: string | null;
+}
+
 export interface MetricStore {
   initialize(): Promise<void>;
   close(): Promise<void>;
@@ -118,6 +146,8 @@ export interface MetricStore {
   queryTrueFlakyTests(opts?: { top?: number }): Promise<TrueFlakyScore[]>;
   queryFlakyByVariant(opts?: { suite?: string; testName?: string; top?: number }): Promise<VariantFlakyScore[]>;
   raw<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
+  recordSamplingRun(run: SamplingRunRecord): Promise<number>;
+  recordSamplingRunTests(records: SamplingRunTestRecord[]): Promise<void>;
   addQuarantine(test: TestSelector, reason: string): Promise<void>;
   removeQuarantine(test: TestSelector): Promise<void>;
   queryQuarantined(): Promise<QuarantinedTest[]>;

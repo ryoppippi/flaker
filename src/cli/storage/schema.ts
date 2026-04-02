@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS collected_artifacts (
 );
 
 CREATE SEQUENCE IF NOT EXISTS test_results_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS sampling_runs_id_seq START 1;
 
 CREATE TABLE IF NOT EXISTS quarantined_tests (
   suite       VARCHAR NOT NULL,
@@ -60,6 +61,36 @@ CREATE TABLE IF NOT EXISTS quarantined_test_identities (
   filter_text  VARCHAR,
   reason       VARCHAR NOT NULL DEFAULT 'manual',
   created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sampling_runs (
+  id                        BIGINT PRIMARY KEY,
+  commit_sha                VARCHAR,
+  command_kind              VARCHAR NOT NULL,
+  strategy                  VARCHAR NOT NULL,
+  requested_count           INTEGER,
+  requested_percentage      DOUBLE,
+  seed                      BIGINT,
+  changed_files             JSON,
+  candidate_count           INTEGER NOT NULL,
+  selected_count            INTEGER NOT NULL,
+  sample_ratio              DOUBLE,
+  estimated_saved_tests     INTEGER,
+  estimated_saved_minutes   DOUBLE,
+  fallback_reason           VARCHAR,
+  duration_ms               INTEGER,
+  created_at                TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sampling_run_tests (
+  sampling_run_id BIGINT REFERENCES sampling_runs(id),
+  ordinal         INTEGER NOT NULL,
+  test_id         VARCHAR,
+  task_id         VARCHAR,
+  suite           VARCHAR NOT NULL,
+  test_name       VARCHAR NOT NULL,
+  filter_text     VARCHAR,
+  PRIMARY KEY (sampling_run_id, ordinal)
 );
 `;
 
