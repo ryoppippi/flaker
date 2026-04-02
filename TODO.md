@@ -101,7 +101,7 @@
 
 ### 分類 B: hybrid のまま進める機能
 
-- [ ] affected explain / inspect
+- [x] affected explain / inspect
   - 元 issue: #3
   - 細分類:
     - `core-reducer`: direct/transitive selection 判定
@@ -113,8 +113,11 @@
   - 方針:
     - direct / transitive selection の判定は MoonBit 化可能
     - resolver 固有の match reason と JSON/Markdown 出力は TS shell を維持
+  - 進捗:
+    - direct / transitive selection reducer と target dedupe は `src/core/analysis/affected_explain/` に移行済み
+    - resolver 固有の match reason と JSON/Markdown 出力は TS shell を維持
 
-- [ ] stable test identity
+- [x] stable test identity
   - 元 issue: #8
   - 細分類:
     - `core-contract`: stable ID canonical input
@@ -126,6 +129,9 @@
   - 方針:
     - adapter 境界の正規化は TS 維持
     - 将来的に stable ID の canonical hash/normalization は MoonBit 化を検討
+  - 進捗:
+    - stable test id の canonical string 生成と normalized field 解決は `src/core/analysis/identity/` に移行済み
+    - adapter 境界の source 正規化と storage bridge は TS shell を維持
 
 - [x] eval / KPI aggregation
   - crater dogfood で追加された predictive KPI を含む
@@ -161,7 +167,7 @@
 1. `report summary reduction` を `core-reducer` として MoonBit に移す
 2. `quarantine match / mode 判定` を `core-policy` として MoonBit に移す
 3. `config ownership analysis` を `core-policy` として MoonBit に移す
-4. `affected explain` の selection 判定だけを MoonBit に寄せ、explain payload は TS に残す
+4. `stable test identity` の adapter source 正規化を TS shell として維持しつつ、必要なら variant contract を bitflow/actrun に広げる
 
 ## 完了済み
 - [x] MoonBit 未ビルド時でも affected target を解決できる TypeScript fallback を実装

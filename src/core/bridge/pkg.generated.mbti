@@ -4,6 +4,8 @@ package "mizchi/flaker/bridge"
 // Values
 pub fn aggregate_report_json(String) -> String
 
+pub fn build_affected_report_json(String, String, String, String) -> String
+
 pub fn build_reverse_deps_json(String) -> String
 
 pub fn build_sampling_kpi_json(String) -> String
@@ -11,6 +13,10 @@ pub fn build_sampling_kpi_json(String) -> String
 pub fn classify_report_diff_json(String) -> String
 
 pub fn compute_quarantine_exit_code_json(String, Int) -> String
+
+pub fn create_stable_test_id_json(String) -> String
+
+pub fn dedupe_affected_targets_json(String) -> String
 
 pub fn detect_flaky_json(String) -> String
 
@@ -25,6 +31,8 @@ pub fn get_affected_test_patterns_json(String, String) -> String
 pub fn is_blocking_failure_json(String) -> String
 
 pub fn resolve_affected_json(String, String) -> String
+
+pub fn resolve_test_identity_json(String) -> String
 
 pub fn run_config_check_json(String, String, String) -> String
 

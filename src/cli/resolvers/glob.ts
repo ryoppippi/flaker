@@ -1,12 +1,10 @@
 import { readFileSync } from "node:fs";
 import { parse } from "smol-toml";
 import {
-  buildAffectedReport,
-  createAffectedSelection,
+  buildAffectedReportFromInputs,
 } from "./affected-report.js";
 import type {
   AffectedReport,
-  AffectedSelection,
   AffectedTarget,
   DependencyResolver,
 } from "./types.js";
@@ -87,18 +85,6 @@ function targetMatchesRule(target: AffectedTarget, rule: CompiledGlobRule): bool
   return rule.select.some((pattern) => pattern.test(spec));
 }
 
-function buildSelection(
-  target: AffectedTarget,
-  matchedPaths: Set<string>,
-  reasons: Set<string>,
-): AffectedSelection {
-  return createAffectedSelection(target, {
-    direct: true,
-    matchedPaths: [...matchedPaths],
-    matchReasons: [...reasons].sort(),
-  });
-}
-
 export class GlobRuleResolver implements DependencyResolver {
   private readonly rules: CompiledGlobRule[];
 
@@ -129,7 +115,7 @@ export class GlobRuleResolver implements DependencyResolver {
     return allTestFiles.filter((target) => selected.has(target));
   }
 
-  explain(changedFiles: string[], targets: AffectedTarget[]): AffectedReport {
+  async explain(changedFiles: string[], targets: AffectedTarget[]): Promise<AffectedReport> {
     const matchedFiles = new Set<string>();
     const selected = new Map<string, { target: AffectedTarget; matchedPaths: Set<string>; reasons: Set<string> }>();
 
@@ -163,13 +149,16 @@ export class GlobRuleResolver implements DependencyResolver {
       }
     }
 
-    return buildAffectedReport(
-      "glob",
+    return buildAffectedReportFromInputs({
+      resolver: "glob",
       changedFiles,
-      [...selected.values()].map((entry) =>
-        buildSelection(entry.target, entry.matchedPaths, entry.reasons)
-      ),
-      changedFiles.filter((file) => !matchedFiles.has(file)),
-    );
+      targets,
+      directSelections: [...selected.values()].map((entry) => ({
+        target: entry.target,
+        matchedPaths: [...entry.matchedPaths],
+        matchReasons: [...entry.reasons].sort(),
+      })),
+      unmatched: changedFiles.filter((file) => !matchedFiles.has(file)),
+    });
   }
 }

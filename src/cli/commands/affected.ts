@@ -63,7 +63,7 @@ function formatSelectionSection(
 }
 
 export async function runAffected(opts: RunAffectedOpts): Promise<AffectedReport> {
-  const targets = dedupeAffectedTargets(opts.listedTests.map(toAffectedTarget));
+  const targets = await dedupeAffectedTargets(opts.listedTests.map(toAffectedTarget));
   if (opts.resolver.explain) {
     const report = await opts.resolver.explain(opts.changedFiles, targets);
     return normalizeAffectedReport(report, opts.resolverName);

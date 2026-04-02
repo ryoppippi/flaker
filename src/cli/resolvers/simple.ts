@@ -1,6 +1,5 @@
 import {
-  buildAffectedReport,
-  createAffectedSelection,
+  buildAffectedReportFromInputs,
 } from "./affected-report.js";
 import type {
   AffectedReport,
@@ -40,9 +39,9 @@ export class SimpleResolver implements DependencyResolver {
     });
   }
 
-  explain(changedFiles: string[], targets: AffectedTarget[]): AffectedReport {
+  async explain(changedFiles: string[], targets: AffectedTarget[]): Promise<AffectedReport> {
     const matchedFiles = new Set<string>();
-    const selected = targets.flatMap((target) => {
+    const directSelections = targets.flatMap((target) => {
       const targetDir = toTargetDir(target.spec);
       const directMatches = changedFiles.filter((file) => {
         const changedDir = toChangedDir(file);
@@ -60,21 +59,22 @@ export class SimpleResolver implements DependencyResolver {
       }
 
       return [
-        createAffectedSelection(target, {
-          direct: true,
+        {
+          target,
           matchedPaths: directMatches,
           matchReasons: Array.from(
             new Set(directMatches.map((file) => toDirectoryReason(toChangedDir(file)))),
           ),
-        }),
+        },
       ];
     });
 
-    return buildAffectedReport(
-      "simple",
+    return buildAffectedReportFromInputs({
+      resolver: "simple",
       changedFiles,
-      selected,
-      changedFiles.filter((file) => !matchedFiles.has(file)),
-    );
+      targets,
+      directSelections,
+      unmatched: changedFiles.filter((file) => !matchedFiles.has(file)),
+    });
   }
 }

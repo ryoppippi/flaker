@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { loadCore } from "../core/loader.js";
 import {
-  buildAffectedReport,
-  createAffectedSelection,
+  buildAffectedReportFromInputs,
 } from "./affected-report.js";
 import {
   buildBitflowDependents,
@@ -29,7 +28,7 @@ export class BitflowNativeResolver implements DependencyResolver {
     return affectedTargets.filter((target) => testSet.has(target));
   }
 
-  explain(changedFiles: string[], targets: AffectedTarget[]): AffectedReport {
+  async explain(changedFiles: string[], targets: AffectedTarget[]): Promise<AffectedReport> {
     const tasks = parseBitflowWorkflowTasks(this.workflowText);
     const directMatches = new Map<
       string,
@@ -79,29 +78,30 @@ export class BitflowNativeResolver implements DependencyResolver {
       }
     }
 
-    const selected = [...affected].flatMap((taskId) => {
+    const directSelections = [...directMatches.keys()].flatMap((taskId) => {
       const matchedTargets = targetsByTaskId.get(taskId) ?? [];
-      const direct = directMatches.has(taskId);
-      const parents = [...(includedBy.get(taskId) ?? [])].sort();
       const directMatch = directMatches.get(taskId);
 
       return matchedTargets.map((target) =>
-        createAffectedSelection(target, {
-          direct,
-          includedBy: direct ? [] : parents,
-          matchedPaths: direct ? (directMatch?.matchedPaths ?? []) : [],
-          matchReasons: direct
-            ? (directMatch?.matchReasons ?? [])
-            : parents.map((parent) => `dependency:${parent}`),
+        ({
+          target,
+          matchedPaths: directMatch?.matchedPaths ?? [],
+          matchReasons: directMatch?.matchReasons ?? [],
         }),
       );
     });
 
-    return buildAffectedReport(
-      "bitflow",
+    return buildAffectedReportFromInputs({
+      resolver: "bitflow",
       changedFiles,
-      selected,
-      [...unmatched],
-    );
+      targets,
+      directSelections,
+      transitiveTasks: [...includedBy.entries()].map(([taskId, parents]) => ({
+        taskId,
+        includedBy: [...parents].sort(),
+        matchReasons: [...parents].sort().map((parent) => `dependency:${parent}`),
+      })),
+      unmatched: [...unmatched],
+    });
   }
 }

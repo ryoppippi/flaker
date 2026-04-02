@@ -1,8 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
-  buildAffectedReport,
-  createAffectedSelection,
+  buildAffectedReportFromInputs,
 } from "./affected-report.js";
 import type {
   AffectedReport,
@@ -261,13 +260,9 @@ export class MoonResolver implements DependencyResolver {
     return Array.from(affectedTests).filter((t) => testSet.has(t));
   }
 
-  explain(changedFiles: string[], targets: AffectedTarget[]): AffectedReport {
+  async explain(changedFiles: string[], targets: AffectedTarget[]): Promise<AffectedReport> {
     const { directMatches, unmatched } = this.matchChangedPackages(changedFiles);
     const includedBy = this.expandAffectedPackages(directMatches);
-    const affectedPackages = new Set<string>([
-      ...directMatches.keys(),
-      ...includedBy.keys(),
-    ]);
     const targetsByTaskId = new Map<string, AffectedTarget[]>();
 
     for (const target of targets) {
@@ -279,22 +274,28 @@ export class MoonResolver implements DependencyResolver {
       }
     }
 
-    const selected = [...affectedPackages].flatMap((taskId) => {
+    const directSelections = [...directMatches.keys()].flatMap((taskId) => {
       const matchedTargets = targetsByTaskId.get(taskId) ?? [];
-      const direct = directMatches.has(taskId);
-      const parents = includedBy.get(taskId) ?? [];
       return matchedTargets.map((target) =>
-        createAffectedSelection(target, {
-          direct,
-          includedBy: direct ? [] : parents,
-          matchedPaths: direct ? (directMatches.get(taskId) ?? []) : [],
-          matchReasons: direct
-            ? [`package:${taskId}`]
-            : parents.map((parent) => `dependency:${parent}`),
+        ({
+          target,
+          matchedPaths: directMatches.get(taskId) ?? [],
+          matchReasons: [`package:${taskId}`],
         }),
       );
     });
 
-    return buildAffectedReport("moon", changedFiles, selected, unmatched);
+    return buildAffectedReportFromInputs({
+      resolver: "moon",
+      changedFiles,
+      targets,
+      directSelections,
+      transitiveTasks: [...includedBy.entries()].map(([taskId, parents]) => ({
+        taskId,
+        includedBy: parents,
+        matchReasons: parents.map((parent) => `dependency:${parent}`),
+      })),
+      unmatched,
+    });
   }
 }

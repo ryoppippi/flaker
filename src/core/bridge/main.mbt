@@ -59,6 +59,61 @@ pub fn resolve_affected_json(
 }
 
 ///|
+pub fn create_stable_test_id_json(input_json : String) -> String {
+  let input : @types.StableTestIdentityInput = try! @json.from_json(
+    try! @json.parse(input_json),
+  )
+  let result = @identity_core.create_stable_test_id(input)
+  result.to_json().stringify()
+}
+
+///|
+pub fn resolve_test_identity_json(input_json : String) -> String {
+  let input : @types.StableTestIdentityInput = try! @json.from_json(
+    try! @json.parse(input_json),
+  )
+  let result = @identity_core.resolve_test_identity(input)
+  result.to_json().stringify()
+}
+
+///|
+pub fn dedupe_affected_targets_json(targets_json : String) -> String {
+  let targets : Array[@types.AffectedTargetInput] = try! @json.from_json(
+    try! @json.parse(targets_json),
+  )
+  let result = @affected_explain.dedupe_affected_targets(targets)
+  result.to_json().stringify()
+}
+
+///|
+pub fn build_affected_report_json(
+  targets_json : String,
+  direct_selections_json : String,
+  transitive_tasks_json : String,
+  unmatched_json : String,
+) -> String {
+  let targets : Array[@types.AffectedTargetInput] = try! @json.from_json(
+    try! @json.parse(targets_json),
+  )
+  let direct_selections : Array[@types.AffectedDirectSelectionInput] = try! @json.from_json(
+    try! @json.parse(direct_selections_json),
+  )
+  let transitive_tasks : Array[@types.AffectedTransitiveTaskInput] = try! @json.from_json(
+    try! @json.parse(transitive_tasks_json),
+  )
+  let unmatched : Array[String] = try! @json.from_json(
+    try! @json.parse(unmatched_json),
+  )
+  let result = @affected_explain.build_affected_report(
+    targets,
+    direct_selections,
+    transitive_tasks,
+    unmatched,
+  )
+  result.to_json().stringify()
+}
+
+///|
 pub fn find_affected_nodes_json(
   graph_json : String,
   changed_files_json : String,

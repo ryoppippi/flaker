@@ -333,3 +333,78 @@ pub(all) struct SamplingKpiOutput {
   misses : SamplingKpiMissesOutput
   confusion_matrix : SamplingKpiConfusionMatrixOutput
 } derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedTargetInput {
+  spec : String
+  task_id : String
+  filter : String?
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedDirectSelectionInput {
+  spec : String
+  task_id : String
+  filter : String?
+  matched_paths : Array[String]
+  match_reasons : Array[String]
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedTransitiveTaskInput {
+  task_id : String
+  included_by : Array[String]
+  match_reasons : Array[String]
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedSelectionOutput {
+  task_id : String
+  spec : String
+  filter : String?
+  direct : Bool
+  included_by : Array[String]
+  matched_paths : Array[String]
+  match_reasons : Array[String]
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedReportSummaryOutput {
+  matched_count : Int
+  selected_count : Int
+  unmatched_count : Int
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct AffectedReportCoreOutput {
+  matched : Array[AffectedSelectionOutput]
+  selected : Array[AffectedSelectionOutput]
+  unmatched : Array[String]
+  summary : AffectedReportSummaryOutput
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct StableVariantEntryInput {
+  key : String
+  value : String
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct StableTestIdentityInput {
+  suite : String
+  test_name : String
+  task_id : String?
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String?
+} derive(Eq, Show, FromJson, ToJson)
+
+///|
+pub(all) struct ResolvedStableTestIdentityOutput {
+  suite : String
+  test_name : String
+  task_id : String
+  filter : String?
+  variant : Array[StableVariantEntryInput]?
+  test_id : String
+} derive(Eq, Show, FromJson, ToJson)
