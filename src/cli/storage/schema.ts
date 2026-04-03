@@ -92,6 +92,37 @@ CREATE TABLE IF NOT EXISTS sampling_run_tests (
   filter_text     VARCHAR,
   PRIMARY KEY (sampling_run_id, ordinal)
 );
+
+CREATE TABLE IF NOT EXISTS commit_changes (
+  commit_sha  VARCHAR NOT NULL,
+  file_path   VARCHAR NOT NULL,
+  change_type VARCHAR,
+  additions   INTEGER DEFAULT 0,
+  deletions   INTEGER DEFAULT 0,
+  PRIMARY KEY (commit_sha, file_path)
+);
+`;
+
+export const CO_FAILURE_QUERY = `
+SELECT
+  cc.file_path,
+  COALESCE(tr.test_id, '') AS test_id,
+  tr.suite,
+  tr.test_name,
+  COUNT(*)::INTEGER AS co_runs,
+  COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')
+    OR (tr.retry_count > 0 AND tr.status = 'passed'))::INTEGER AS co_failures,
+  ROUND(
+    COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')
+      OR (tr.retry_count > 0 AND tr.status = 'passed'))
+    * 100.0 / COUNT(*), 2
+  )::DOUBLE AS co_failure_rate
+FROM commit_changes cc
+JOIN test_results tr ON cc.commit_sha = tr.commit_sha
+WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (? || ' days')
+GROUP BY cc.file_path, tr.test_id, tr.suite, tr.test_name
+HAVING co_runs >= ? AND co_failures > 0
+ORDER BY co_failure_rate DESC
 `;
 
 export const FLAKY_QUERY = `
