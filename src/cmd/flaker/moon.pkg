@@ -59,5 +59,9 @@ options(
       "format": "esm",
     },
   },
-  targets: { "host_js.mbt": [ "js" ], "host_native.mbt": [ "native" ], "host_wasm.mbt": [ "wasm", "wasm-gc" ] },
+  targets: {
+    "host_js.mbt": [ "js" ],
+    "host_native.mbt": [ "native" ],
+    "host_wasm.mbt": [ "wasm", "wasm-gc" ],
+  },
 )

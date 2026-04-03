@@ -17,5 +17,5 @@ pub(all) struct GBDTModel {
 ///|
 pub(all) struct TrainingRow {
   features : Array[Double]
-  label : Double  // 0.0 or 1.0
+  label : Double // 0.0 or 1.0
 } derive(Eq, Show, FromJson, ToJson)

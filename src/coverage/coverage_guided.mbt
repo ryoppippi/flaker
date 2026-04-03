@@ -1,4 +1,5 @@
-///| Greedy set cover: select tests that maximize coverage of changed edges.
+///|
+/// Greedy set cover: select tests that maximize coverage of changed edges.
 ///
 /// Algorithm (based on coverage-guided fuzzing's max-reduce):
 /// 1. Build edge → tests reverse index
@@ -86,7 +87,7 @@ pub fn select_by_coverage(
     }
   }
 
-  let covered_count = covered.size()
+  let covered_count = covered.length()
   let total = changed_edges.length()
   let ratio = if total > 0 {
     (covered_count.to_double() / total.to_double() * 100.0).round() / 100.0
@@ -102,7 +103,8 @@ pub fn select_by_coverage(
   }
 }
 
-///| Bucket a rate value (0-100) into AFL-style discrete buckets.
+///|
+/// Bucket a rate value (0-100) into AFL-style discrete buckets.
 /// Reduces noise in flaky_rate and co_failure_boost.
 ///
 /// | Raw     | Bucket |

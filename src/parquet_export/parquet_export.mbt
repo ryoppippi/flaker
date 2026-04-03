@@ -1,10 +1,11 @@
-///| Write test_results rows as Parquet bytes.
+///|
+/// Write test_results rows as Parquet bytes.
 ///  Columns: workflow_run_id (Int64), test_id (String?), task_id (String?),
 ///  suite (String), test_name (String), status (String), duration_ms (Int32),
 ///  retry_count (Int32), commit_sha (String), created_at_ms (Int64)
 pub fn write_test_results_parquet(
   rows : Array[TestResultRow],
-) -> Bytes!@parquet.ParquetError {
+) -> Bytes raise @parquet.ParquetError {
   let columns = [
     @parquet.new_column("workflow_run_id", Int64, Required),
     @parquet.new_column("test_id", String, Optional),
@@ -39,13 +40,14 @@ pub fn write_test_results_parquet(
     ])
   }
   let file = @parquet.new_parquet_file(columns, pq_rows, Some("flaker"))
-  @parquet.write_bytes!(file)
+  @parquet.write_bytes(file)
 }
 
-///| Write commit_changes rows as Parquet bytes.
+///|
+/// Write commit_changes rows as Parquet bytes.
 pub fn write_commit_changes_parquet(
   rows : Array[CommitChangeRow],
-) -> Bytes!@parquet.ParquetError {
+) -> Bytes raise @parquet.ParquetError {
   let columns = [
     @parquet.new_column("commit_sha", String, Required),
     @parquet.new_column("file_path", String, Required),
@@ -67,13 +69,14 @@ pub fn write_commit_changes_parquet(
     ])
   }
   let file = @parquet.new_parquet_file(columns, pq_rows, Some("flaker"))
-  @parquet.write_bytes!(file)
+  @parquet.write_bytes(file)
 }
 
-///| Write workflow_runs rows as Parquet bytes.
+///|
+/// Write workflow_runs rows as Parquet bytes.
 pub fn write_workflow_runs_parquet(
   rows : Array[WorkflowRunRow],
-) -> Bytes!@parquet.ParquetError {
+) -> Bytes raise @parquet.ParquetError {
   let columns = [
     @parquet.new_column("id", Int64, Required),
     @parquet.new_column("repo", String, Required),
@@ -107,5 +110,5 @@ pub fn write_workflow_runs_parquet(
     ])
   }
   let file = @parquet.new_parquet_file(columns, pq_rows, Some("flaker"))
-  @parquet.write_bytes!(file)
+  @parquet.write_bytes(file)
 }

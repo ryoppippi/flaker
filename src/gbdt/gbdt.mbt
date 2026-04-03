@@ -1,9 +1,11 @@
-///| Sigmoid function
+///|
+/// Sigmoid function
 fn sigmoid(x : Double) -> Double {
   1.0 / (1.0 + @math.exp(-x))
 }
 
-///| Find best split for a single feature (decision stump)
+///|
+/// Find best split for a single feature (decision stump)
 fn find_best_split(
   features : Array[Double],
   residuals : Array[Double],
@@ -21,7 +23,10 @@ fn find_best_split(
   let mut best_right = 0.0
 
   for split_idx in 0..<(n - 1) {
-    let threshold = (features[indices[split_idx]] + features[indices[split_idx + 1]]) / 2.0
+    let threshold = (
+        features[indices[split_idx]] + features[indices[split_idx + 1]]
+      ) /
+      2.0
 
     let mut left_sum = 0.0
     let mut left_w = 0.0
@@ -58,12 +63,13 @@ fn find_best_split(
   (best_threshold, best_left, best_right, best_gain)
 }
 
-///| Train a GBDT model
+///|
+/// Train a GBDT model
 pub fn train(
   data : Array[TrainingRow],
-  num_trees~ : Int = 10,
-  learning_rate~ : Double = 0.1,
-  feature_names~ : Array[String] = [],
+  num_trees? : Int = 10,
+  learning_rate? : Double = 0.1,
+  feature_names? : Array[String] = [],
 ) -> GBDTModel {
   let n = data.length()
   if n == 0 {
@@ -86,7 +92,9 @@ pub fn train(
   for row in data {
     pos_count += row.label
   }
-  let base_score = @math.ln((pos_count + 1.0) / (n.to_double() - pos_count + 1.0))
+  let base_score = @math.ln(
+    (pos_count + 1.0) / (n.to_double() - pos_count + 1.0),
+  )
 
   let predictions = Array::make(n, base_score)
   let trees : Array[DecisionStump] = []
@@ -113,9 +121,7 @@ pub fn train(
     for f in 0..<num_features {
       let feat_values = Array::makei(n, fn(i) { data[i].features[f] })
       let (threshold, left_val, right_val, gain) = find_best_split(
-        feat_values,
-        residuals,
-        weights,
+        feat_values, residuals, weights,
       )
       if gain > best_gain {
         best_gain = gain
@@ -132,7 +138,8 @@ pub fn train(
 
     // Update predictions
     for i in 0..<n {
-      let value = if data[i].features[best_stump.feature_idx] <= best_stump.threshold {
+      let value = if data[i].features[best_stump.feature_idx] <=
+        best_stump.threshold {
         best_stump.left_value
       } else {
         best_stump.right_value
@@ -144,7 +151,8 @@ pub fn train(
   GBDTModel::{ trees, learning_rate, feature_names: names, base_score }
 }
 
-///| Predict probability of label=1 for a single sample
+///|
+/// Predict probability of label=1 for a single sample
 pub fn predict(model : GBDTModel, features : Array[Double]) -> Double {
   let mut score = model.base_score
   for tree in model.trees {
@@ -158,7 +166,8 @@ pub fn predict(model : GBDTModel, features : Array[Double]) -> Double {
   sigmoid(score)
 }
 
-///| Predict for multiple samples
+///|
+/// Predict for multiple samples
 pub fn predict_batch(
   model : GBDTModel,
   batch : Array[Array[Double]],

@@ -1,4 +1,5 @@
-///| Coverage data for a single test: which code edges it covers.
+///|
+/// Coverage data for a single test: which code edges it covers.
 pub(all) struct TestCoverage {
   suite : String
   test_name : String
@@ -6,10 +7,11 @@ pub(all) struct TestCoverage {
   edges : Array[String]
 } derive(Eq, Show, FromJson, ToJson)
 
-///| Result of coverage-guided sampling.
+///|
+/// Result of coverage-guided sampling.
 pub(all) struct CoverageGuidedResult {
   /// Tests selected by greedy set cover (cover changed edges)
-  selected : Array[String]  // suite names
+  selected : Array[String] // suite names
   /// Edges covered by selected tests
   covered_edges : Int
   /// Total changed edges

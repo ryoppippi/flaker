@@ -129,7 +129,11 @@ test "root package exposes reporting, policy, and metrics helpers" {
 
   let report = build_affected_report_from_input(AffectedReportInput::{
     targets: [
-      AffectedTargetInput::{ spec: "tests/a.spec.ts", task_id: "task-a", filter: None },
+      AffectedTargetInput::{
+        spec: "tests/a.spec.ts",
+        task_id: "task-a",
+        filter: None,
+      },
     ],
     direct_selections: [
       AffectedDirectSelectionInput::{

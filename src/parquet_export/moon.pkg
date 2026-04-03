@@ -1,3 +1,4 @@
 import {
   "mizchi/parquet" @parquet,
+  "moonbitlang/core/json" @json,
 }

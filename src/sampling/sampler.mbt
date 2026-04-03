@@ -55,7 +55,9 @@ pub fn sample_weighted(
     return []
   }
   // Build weights
-  let weights = Array::makei(n, fn(i) { 1.0 + meta[i].flaky_rate + meta[i].co_failure_boost.or(0.0) })
+  let weights = Array::makei(n, fn(i) {
+    1.0 + meta[i].flaky_rate + meta[i].co_failure_boost.unwrap_or(0.0)
+  })
   let selected : Array[@types.TestMeta] = []
   let used = Array::make(n, false)
   let mut state = seed
@@ -127,7 +129,7 @@ pub fn sample_hybrid(
 
   // Priority 2: co-failure correlated tests
   for i, m in meta {
-    if m.co_failure_boost.or(0.0) > 0.0 && !used.contains(i) {
+    if m.co_failure_boost.unwrap_or(0.0) > 0.0 && !used.contains(i) {
       selected.push(m)
       used.set(i, true)
     }

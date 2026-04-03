@@ -1,3 +1,4 @@
+///|
 test "write_test_results_parquet produces valid bytes" {
   let rows = [
     TestResultRow::{
@@ -25,15 +26,16 @@ test "write_test_results_parquet produces valid bytes" {
       created_at_ms: 1712100000000L,
     },
   ]
-  let bytes = write_test_results_parquet!(rows)
+  let bytes = write_test_results_parquet(rows)
   // Parquet files start with magic bytes "PAR1"
-  assert_true!(bytes.length() > 4)
-  assert_eq!(bytes[0], b'P')
-  assert_eq!(bytes[1], b'A')
-  assert_eq!(bytes[2], b'R')
-  assert_eq!(bytes[3], b'1')
+  assert_true(bytes.length() > 4)
+  assert_eq(bytes[0], b'P')
+  assert_eq(bytes[1], b'A')
+  assert_eq(bytes[2], b'R')
+  assert_eq(bytes[3], b'1')
 }
 
+///|
 test "write_commit_changes_parquet produces valid bytes" {
   let rows = [
     CommitChangeRow::{
@@ -44,11 +46,12 @@ test "write_commit_changes_parquet produces valid bytes" {
       deletions: 5,
     },
   ]
-  let bytes = write_commit_changes_parquet!(rows)
-  assert_true!(bytes.length() > 4)
-  assert_eq!(bytes[0], b'P')
+  let bytes = write_commit_changes_parquet(rows)
+  assert_true(bytes.length() > 4)
+  assert_eq(bytes[0], b'P')
 }
 
+///|
 test "write_workflow_runs_parquet produces valid bytes" {
   let rows = [
     WorkflowRunRow::{
@@ -62,11 +65,12 @@ test "write_workflow_runs_parquet produces valid bytes" {
       duration_ms: 60000,
     },
   ]
-  let bytes = write_workflow_runs_parquet!(rows)
-  assert_true!(bytes.length() > 4)
-  assert_eq!(bytes[0], b'P')
+  let bytes = write_workflow_runs_parquet(rows)
+  assert_true(bytes.length() > 4)
+  assert_eq(bytes[0], b'P')
 }
 
+///|
 test "round-trip: write and read test_results" {
   let rows = [
     TestResultRow::{
@@ -82,10 +86,10 @@ test "round-trip: write and read test_results" {
       created_at_ms: 1712100000000L,
     },
   ]
-  let bytes = write_test_results_parquet!(rows)
-  let file = @parquet.read_bytes!(bytes)
-  assert_eq!(file.row_count(), 1)
+  let bytes = write_test_results_parquet(rows)
+  let file = @parquet.read_bytes(bytes)
+  assert_eq(file.row_count(), 1)
   let row = file.rows()[0]
-  assert_eq!(row[3], @parquet.Value::String("tests/a.spec.ts"))
-  assert_eq!(row[5], @parquet.Value::String("passed"))
+  assert_eq(row[3], @parquet.Value::String("tests/a.spec.ts"))
+  assert_eq(row[5], @parquet.Value::String("passed"))
 }
