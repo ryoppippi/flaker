@@ -1,6 +1,11 @@
 # flaker
 
-`flaker` is a CLI for test sampling, flaky-test analysis, and metrics collection.
+`flaker` is a test-intelligence toolkit for:
+
+- sampling a smaller local test run from history and changed files
+- detecting flaky tests in noisy CI environments
+- measuring how well local sampled runs predict CI
+- embedding the same core logic in MoonBit as a library
 
 It is designed for repositories where:
 
@@ -15,7 +20,7 @@ It is designed for repositories where:
 - Which tests are actually flaky?
 - How well does local sampled execution predict CI outcomes?
 
-## Install
+## Install as a CLI
 
 ```bash
 pnpm add -D @mizchi/flaker
@@ -31,6 +36,70 @@ Requirements:
 
 - Node.js 24+
 - pnpm 10+
+
+## Use as a MoonBit Library
+
+`flaker` also publishes a MoonBit library surface at `mizchi/flaker`.
+
+The root package re-exports both:
+
+- pure computation APIs
+- the shared contract types they consume and return
+
+If you prefer a stricter import boundary, the same types are still available
+from `mizchi/flaker/contracts`.
+
+```moonbit
+import {
+  "mizchi/flaker" @flaker,
+}
+
+test "sample from historical runs" {
+  let meta = @flaker.build_sampling_meta(
+    [
+      @flaker.SamplingHistoryRowInput::{
+        suite: "tests/login.spec.ts",
+        test_name: "login works",
+        task_id: Some("web-login"),
+        filter: None,
+        variant: None,
+        test_id: None,
+        status: "passed",
+        retry_count: 0,
+        duration_ms: 1200,
+        created_at: "2026-04-03T00:00:00.000Z",
+      },
+    ],
+    [
+      @flaker.SamplingListedTestInput::{
+        suite: "tests/login.spec.ts",
+        test_name: "login works",
+        task_id: Some("web-login"),
+        filter: None,
+        variant: None,
+        test_id: None,
+      },
+    ],
+  )
+
+  let sampled = @flaker.sample_weighted(meta, count=1, seed=1UL)
+  assert_eq(sampled.length(), 1)
+}
+```
+
+The root library surface intentionally re-exports pure logic only:
+
+- flaky detection: `detect_flaky`
+- sampling: `build_sampling_meta`, `sample_random`, `sample_weighted`, `sample_hybrid`
+- affected analysis: `resolve_affected`, `build_affected_report`
+- stable identity: `create_stable_test_id`, `resolve_test_identity`
+- graph helpers: `find_affected_nodes`, `expand_transitive`, `topological_sort`
+- report reducers: `summarize_report`, `classify_report_diff`, `aggregate_report`
+- policy: `summarize_quarantine`, `compute_quarantine_exit_code`, `run_config_check`
+- metrics: `build_sampling_kpi`
+
+Contracts remain separate so the API boundary stays explicit and reusable from
+other packages.
 
 ## Core Workflow
 
@@ -207,8 +276,9 @@ min_runs = 10
 
 ## Docs
 
-- [Usage Guide](./docs/how-to-use.md)
-- [Why flaker](./docs/why-flaker.md)
+- [Usage Guide](https://github.com/mizchi/flaker/blob/main/docs/how-to-use.md)
+- [Why flaker](https://github.com/mizchi/flaker/blob/main/docs/why-flaker.md)
+- [Design Partner Rollout](https://github.com/mizchi/flaker/blob/main/docs/design-partner-rollout.ja.md)
 
 ## Release
 

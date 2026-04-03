@@ -1,0 +1,163 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mizchi/flaker"
+
+import {
+  "mizchi/flaker/contracts",
+}
+
+// Values
+pub fn aggregate_report(Array[@contracts.ReportAggregateShardInput]) -> @contracts.ReportAggregateOutput
+
+pub fn build_affected_report(Array[@contracts.AffectedTargetInput], Array[@contracts.AffectedDirectSelectionInput], Array[@contracts.AffectedTransitiveTaskInput], Array[String]) -> @contracts.AffectedReportCoreOutput
+
+pub fn build_reverse_deps(@contracts.DependencyGraphInput) -> Array[@contracts.ReverseDepEntry]
+
+pub fn build_sampling_kpi(Array[@contracts.EvalCommitSignalInput]) -> @contracts.SamplingKpiOutput
+
+pub fn build_sampling_meta(Array[@contracts.SamplingHistoryRowInput], Array[@contracts.SamplingListedTestInput]) -> Array[@contracts.TestMeta]
+
+pub fn classify_report_diff(Array[@contracts.ReportDiffStatusInput]) -> @contracts.ReportDiffBuckets
+
+pub fn compute_quarantine_exit_code(Array[@contracts.QuarantineRuntimeResultInput], Int) -> Int
+
+pub fn create_stable_test_id(@contracts.StableTestIdentityInput) -> String
+
+pub fn dedupe_affected_targets(Array[@contracts.AffectedTargetInput]) -> Array[@contracts.AffectedTargetInput]
+
+pub fn detect_flaky(@contracts.DetectInput) -> @contracts.DetectOutput
+
+pub fn expand_transitive(@contracts.DependencyGraphInput, Array[String]) -> Array[String]
+
+pub fn find_affected_nodes(@contracts.DependencyGraphInput, Array[String]) -> Array[String]
+
+pub fn find_matching_quarantine(Array[@contracts.QuarantineEntryInput], String, String, String) -> Int
+
+pub fn get_affected_test_patterns(@contracts.DependencyGraphInput, Array[String]) -> Array[String]
+
+pub fn is_blocking_failure(@contracts.QuarantineRuntimeResultInput) -> Bool
+
+pub fn resolve_affected(String, Array[String]) -> Array[String]
+
+pub fn resolve_test_identity(@contracts.StableTestIdentityInput) -> @contracts.ResolvedStableTestIdentityOutput
+
+pub fn run_config_check(Array[@contracts.ConfigCheckListedTestInput], Array[String], Array[@contracts.ConfigCheckTaskDefinitionInput]) -> @contracts.ConfigCheckCoreOutput
+
+pub fn sample_hybrid(Array[@contracts.TestMeta], affected_suites~ : Array[String], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+pub fn sample_random(Array[@contracts.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+pub fn sample_weighted(Array[@contracts.TestMeta], count~ : Int, seed~ : UInt64) -> Array[@contracts.TestMeta]
+
+pub fn summarize_quarantine(Array[@contracts.QuarantineEntryInput], Array[@contracts.QuarantineTaskOwnershipInput], Array[String], String, Int) -> @contracts.QuarantineSummaryCoreOutput
+
+pub fn summarize_report(Array[@contracts.ReportSummaryTestInput]) -> @contracts.ReportSummaryOutput
+
+pub fn topological_sort(@contracts.DependencyGraphInput) -> Array[String]
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+pub using @contracts {type AffectedDirectSelectionInput}
+
+pub using @contracts {type AffectedReportCoreOutput}
+
+pub using @contracts {type AffectedReportSummaryOutput}
+
+pub using @contracts {type AffectedSelectionOutput}
+
+pub using @contracts {type AffectedTargetInput}
+
+pub using @contracts {type AffectedTransitiveTaskInput}
+
+pub using @contracts {type ConfigCheckCoreOutput}
+
+pub using @contracts {type ConfigCheckIssueOutput}
+
+pub using @contracts {type ConfigCheckListedTestInput}
+
+pub using @contracts {type ConfigCheckSummaryOutput}
+
+pub using @contracts {type ConfigCheckTaskDefinitionInput}
+
+pub using @contracts {type ConfigOwnershipClaimOutput}
+
+pub using @contracts {type ConfigOwnershipEntryOutput}
+
+pub using @contracts {type ConfigTaskSummaryOutput}
+
+pub using @contracts {type DependencyGraphInput}
+
+pub using @contracts {type DetectInput}
+
+pub using @contracts {type DetectOutput}
+
+pub using @contracts {type EvalCommitSignalInput}
+
+pub using @contracts {type FlakyResult}
+
+pub using @contracts {type GraphNodeInput}
+
+pub using @contracts {type QuarantineEntryInput}
+
+pub using @contracts {type QuarantineIssueOutput}
+
+pub using @contracts {type QuarantineModeCountsOutput}
+
+pub using @contracts {type QuarantineRuntimeResultInput}
+
+pub using @contracts {type QuarantineScopeCountsOutput}
+
+pub using @contracts {type QuarantineSummaryCoreOutput}
+
+pub using @contracts {type QuarantineTaskOwnershipInput}
+
+pub using @contracts {type ReportAggregateOutput}
+
+pub using @contracts {type ReportAggregateShardInput}
+
+pub using @contracts {type ReportAggregateUnstableBuckets}
+
+pub using @contracts {type ReportAggregateUnstableStatusInput}
+
+pub using @contracts {type ReportDiffBuckets}
+
+pub using @contracts {type ReportDiffStatusInput}
+
+pub using @contracts {type ReportFileTotalsOutput}
+
+pub using @contracts {type ReportSummaryOutput}
+
+pub using @contracts {type ReportSummaryTestInput}
+
+pub using @contracts {type ReportTotalsInput}
+
+pub using @contracts {type ResolvedQuarantineEntryOutput}
+
+pub using @contracts {type ResolvedStableTestIdentityOutput}
+
+pub using @contracts {type ReverseDepEntry}
+
+pub using @contracts {type SamplingHistoryRowInput}
+
+pub using @contracts {type SamplingKpiConfusionMatrixOutput}
+
+pub using @contracts {type SamplingKpiMissesOutput}
+
+pub using @contracts {type SamplingKpiOutput}
+
+pub using @contracts {type SamplingKpiSignalOutput}
+
+pub using @contracts {type SamplingListedTestInput}
+
+pub using @contracts {type StableTestIdentityInput}
+
+pub using @contracts {type StableVariantEntryInput}
+
+pub using @contracts {type TestMeta}
+
+pub using @contracts {type TestRunEntry}
+
+// Traits
+
