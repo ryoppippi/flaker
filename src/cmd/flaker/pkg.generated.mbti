@@ -36,6 +36,8 @@ pub fn resolve_affected_json(String, String) -> String
 
 pub fn resolve_test_identity_json(String) -> String
 
+pub fn run_cli(Array[String], String) -> CliResult
+
 pub fn run_config_check_json(String, String, String) -> String
 
 pub fn sample_hybrid_json(String, String, Int, Int) -> String
@@ -53,6 +55,10 @@ pub fn topological_sort_json(String) -> String
 // Errors
 
 // Types and methods
+pub(all) struct CliResult {
+  exit_code : Int
+  output : String
+}
 
 // Type aliases
 

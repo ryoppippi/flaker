@@ -12,6 +12,8 @@ import {
   "mizchi/flaker/policy/quarantine" @quarantine_core,
   "mizchi/flaker/policy/config" @config_check_core,
   "mizchi/flaker/metrics/eval" @eval_core,
+  "moonbitlang/core/argparse" @argparse,
+  "moonbitlang/core/env" @env,
   "moonbitlang/core/json",
 }
 
@@ -48,4 +50,5 @@ options(
       "format": "esm",
     },
   },
+  targets: { "host_js.mbt": [ "js" ], "host_native.mbt": [ "native" ] },
 )

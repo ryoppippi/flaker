@@ -101,6 +101,26 @@ The root library surface intentionally re-exports pure logic only:
 Contracts remain separate so the API boundary stays explicit and reusable from
 other packages.
 
+## Experimental Direct MoonBit CLI
+
+The MoonBit command package at `mizchi/flaker/cmd/flaker` is now directly
+executable on both JS and native targets:
+
+```bash
+moon run src/cmd/flaker --target js -- --help
+moon run src/cmd/flaker --target native -- --version
+```
+
+This direct entrypoint is intentionally narrow for now:
+
+- `--help`
+- `--version`
+- JS bridge exports used by the npm CLI
+
+Host and integration features such as GitHub collection, DuckDB-backed storage,
+artifact ingestion, and archive handling will be migrated incrementally through
+target-specific `_js.mbt` / `_native.mbt` modules.
+
 ## Core Workflow
 
 `flaker` is most useful when you repeat this loop:
