@@ -295,11 +295,11 @@ describe("MoonTestRunner", () => {
   ].join("\n");
 
   it("execute builds correct command with --filter", async () => {
-    let capturedCmd = "";
+    let capturedArgs: string[] = [];
     const runner = new MoonTestRunner({
       command: "moon test",
-      exec: (cmd) => {
-        capturedCmd = cmd;
+      safeExec: (_cmd, args) => {
+        capturedArgs = args;
         return { exitCode: 1, stdout: moonOutput, stderr: "" };
       },
     });
@@ -309,9 +309,8 @@ describe("MoonTestRunner", () => {
       { suite: "mizchi/pkg/module", testName: "test_sub" },
     ]);
 
-    expect(capturedCmd).toBe(
-      'moon test --filter "mizchi/pkg/module::test_add|mizchi/pkg/module::test_sub"',
-    );
+    expect(capturedArgs).toContain("--filter");
+    expect(capturedArgs).toContain("mizchi/pkg/module::test_add|mizchi/pkg/module::test_sub");
   });
 
   it("execute parses moon test output", async () => {
@@ -394,8 +393,8 @@ describe("CustomRunner", () => {
     const runner = new CustomRunner({
       execute: "./run.sh",
       list: "./list.sh",
-      exec: () => ({ exitCode: 0, stdout: "[]", stderr: "" }),
-      execWithStdin: (cmd, stdin) => {
+      safeExec: () => ({ exitCode: 0, stdout: "[]", stderr: "" }),
+      safeExecWithStdin: (_cmd, _args, stdin) => {
         capturedStdin = stdin;
         return {
           exitCode: 0,
@@ -414,18 +413,20 @@ describe("CustomRunner", () => {
 
   it("listTests parses JSON stdout", async () => {
     let capturedCmd = "";
+    let capturedArgs: string[] = [];
     const runner = new CustomRunner({
       execute: "./run.sh",
       list: "./list.sh",
-      exec: (cmd) => {
+      safeExec: (cmd, args) => {
         capturedCmd = cmd;
+        capturedArgs = args;
         return {
           exitCode: 0,
           stdout: JSON.stringify([{ suite: "a", testName: "b" }]),
           stderr: "",
         };
       },
-      execWithStdin: () => ({ exitCode: 0, stdout: "{}", stderr: "" }),
+      safeExecWithStdin: () => ({ exitCode: 0, stdout: "{}", stderr: "" }),
     });
 
     const ids = await runner.listTests();

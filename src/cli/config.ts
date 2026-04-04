@@ -45,6 +45,7 @@ const DEFAULT_CONFIG: FlakerConfig = {
 function deepMerge<T>(target: T, source: Record<string, unknown>): T {
   const result = { ...(target as Record<string, unknown>) };
   for (const key of Object.keys(source)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     const sv = source[key];
     const tv = result[key];
     if (

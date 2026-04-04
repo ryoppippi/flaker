@@ -892,12 +892,18 @@ program
   .command("query <sql>")
   .description("Execute a read-only SQL query against the metrics database")
   .action(async (sql: string) => {
-    // Reject write operations to prevent accidental data modification
-    const normalized = sql.trim().toUpperCase();
-    const writePatterns = /^(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|COPY\s)/;
+    // Reject write operations and dangerous DuckDB functions
+    const stripped = sql.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim();
+    const normalized = stripped.toUpperCase();
+    const writePatterns = /^(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|COPY\s|ATTACH|LOAD|INSTALL)/;
     if (writePatterns.test(normalized)) {
-      console.error("Error: query command only supports read-only (SELECT) queries.");
-      console.error("Use DuckDB CLI directly for write operations.");
+      console.error("Error: query command only supports read-only (SELECT/WITH) queries.");
+      process.exit(1);
+    }
+    // Block DuckDB filesystem functions
+    const dangerousFns = /\b(READ_CSV_AUTO|READ_CSV|READ_PARQUET|READ_JSON_AUTO|READ_JSON|READ_BLOB|READ_TEXT|WRITE_CSV|HTTPFS)\s*\(/i;
+    if (dangerousFns.test(stripped)) {
+      console.error("Error: filesystem/network functions are not allowed in query command.");
       process.exit(1);
     }
     const config = loadConfig(process.cwd());
@@ -1335,7 +1341,7 @@ program
       const commits = await store.raw<{
         commit_sha: string;
       }>(`SELECT DISTINCT commit_sha FROM test_results
-          WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '${windowDays} days'
+          WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
           ORDER BY commit_sha`);
 
       if (commits.length < 5) {

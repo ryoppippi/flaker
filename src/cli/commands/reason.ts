@@ -214,7 +214,7 @@ async function predictRisks(store: MetricStore, windowDays: number): Promise<Ris
           AVG(duration_ms)::DOUBLE as avg_duration,
           STDDEV(duration_ms)::DOUBLE as duration_variance
         FROM test_results
-        WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '${windowDays} days'
+        WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
         GROUP BY suite, test_name
         HAVING COUNT(*) >= 5
           AND COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) * 100.0 / COUNT(*) < 10

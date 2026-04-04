@@ -6,11 +6,17 @@ import type {
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
-import { runCommand } from "./utils.js";
+import { runCommandSafe } from "./utils.js";
 import type { CommandResult } from "./utils.js";
 
 export type ExecFn = (
   cmd: string,
+  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
+) => CommandResult;
+
+export type SafeExecFn = (
+  cmd: string,
+  args: string[],
   opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
 ) => CommandResult;
 
@@ -50,22 +56,34 @@ export function parseMoonTestList(stdout: string): TestId[] {
   return ids;
 }
 
+function parseBaseCommand(command: string): { cmd: string; args: string[] } {
+  const parts = command.split(/\s+/).filter(Boolean);
+  return { cmd: parts[0], args: parts.slice(1) };
+}
+
 export class MoonTestRunner implements RunnerAdapter {
   name = "moontest";
   capabilities: RunnerCapabilities = { nativeParallel: false, maxBatchSize: 50 };
   private baseCommand: string;
-  private execFn: ExecFn;
+  private safeExecFn: SafeExecFn;
 
-  constructor(opts?: { command?: string; exec?: ExecFn }) {
+  constructor(opts?: { command?: string; exec?: ExecFn; safeExec?: SafeExecFn }) {
     this.baseCommand = opts?.command ?? "moon test";
-    this.execFn = opts?.exec ?? runCommand;
+    if (opts?.safeExec) {
+      this.safeExecFn = opts.safeExec;
+    } else if (opts?.exec) {
+      this.safeExecFn = (cmd, args, o) => opts.exec!(`${cmd} ${args.join(" ")}`, o);
+    } else {
+      this.safeExecFn = runCommandSafe;
+    }
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
     const filters = tests.map((t) => `${t.suite}::${t.testName}`);
-    const cmd = `${this.baseCommand} --filter "${filters.join("|")}"`;
+    const { cmd, args } = parseBaseCommand(this.baseCommand);
+    const runArgs = [...args, "--filter", filters.join("|")];
     const start = Date.now();
-    const { exitCode, stdout, stderr } = this.execFn(cmd, opts);
+    const { exitCode, stdout, stderr } = this.safeExecFn(cmd, runArgs, opts);
     const durationMs = Date.now() - start;
 
     const results = parseMoonTestOutput(stdout);
@@ -73,8 +91,8 @@ export class MoonTestRunner implements RunnerAdapter {
   }
 
   async listTests(opts?: ExecuteOpts): Promise<TestId[]> {
-    const cmd = `${this.baseCommand} --dry-run`;
-    const { stdout } = this.execFn(cmd, opts);
+    const { cmd, args } = parseBaseCommand(this.baseCommand);
+    const { stdout } = this.safeExecFn(cmd, [...args, "--dry-run"], opts);
     return parseMoonTestList(stdout);
   }
 }
