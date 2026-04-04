@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { actrunAdapter, extractTestReportsFromArtifacts } from "../adapters/actrun.js";
@@ -38,10 +38,14 @@ function actrunArtifactDirs(workspace: string, runId: string): string[] {
 
 export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLocalResult> {
   const { store } = opts;
-  const execFn = opts.exec ?? ((cmd: string) => execSync(cmd, { encoding: "utf-8" }));
+  const safeExec = (cmd: string, args: string[]): string => {
+    if (opts.exec) return opts.exec(`${cmd} ${args.join(" ")}`);
+    const result = spawnSync(cmd, args, { encoding: "utf-8", stdio: ["inherit", "pipe", "inherit"] });
+    return result.stdout ?? "";
+  };
 
   // Get list of all actrun runs
-  const listJson = execFn("actrun run list --json");
+  const listJson = safeExec("actrun", ["run", "list", "--json"]);
   const allRuns: ActrunRunListEntry[] = JSON.parse(listJson);
 
   if (allRuns.length === 0) {
@@ -64,7 +68,7 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
     if (existing[0].cnt > 0) continue;
 
     // Get full run details
-    const viewJson = execFn(`actrun run view ${entry.run_id} --json`);
+    const viewJson = safeExec("actrun", ["run", "view", entry.run_id, "--json"]);
     const output = JSON.parse(viewJson);
 
     // Try to extract richer test reports from actrun artifacts

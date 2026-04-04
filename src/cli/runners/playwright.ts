@@ -7,11 +7,17 @@ import type {
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
-import { escapeRegex, runCommand } from "./utils.js";
+import { escapeRegex, runCommandSafe } from "./utils.js";
 import type { CommandResult } from "./utils.js";
 
 export type ExecFn = (
   cmd: string,
+  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
+) => CommandResult;
+
+export type SafeExecFn = (
+  cmd: string,
+  args: string[],
   opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
 ) => CommandResult;
 
@@ -64,23 +70,38 @@ export function parsePlaywrightList(stdout: string): TestId[] {
   return ids;
 }
 
+/** Parse a command string like "pnpm exec playwright test" into [cmd, ...args] */
+function parseBaseCommand(command: string): { cmd: string; args: string[] } {
+  const parts = command.split(/\s+/).filter(Boolean);
+  return { cmd: parts[0], args: parts.slice(1) };
+}
+
 export class PlaywrightRunner implements RunnerAdapter {
   name = "playwright";
   capabilities: RunnerCapabilities = { nativeParallel: true };
   private baseCommand: string;
-  private execFn: ExecFn;
+  private safeExecFn: SafeExecFn;
 
-  constructor(opts?: { command?: string; exec?: ExecFn }) {
+  constructor(opts?: { command?: string; exec?: ExecFn; safeExec?: SafeExecFn }) {
     this.baseCommand = opts?.command ?? "pnpm exec playwright test";
-    this.execFn = opts?.exec ?? runCommand;
+    if (opts?.safeExec) {
+      this.safeExecFn = opts.safeExec;
+    } else if (opts?.exec) {
+      this.safeExecFn = (cmd, args, o) => opts.exec!(`${cmd} ${args.join(" ")}`, o);
+    } else {
+      this.safeExecFn = runCommandSafe;
+    }
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
     const pattern = tests.map((t) => escapeRegex(t.testName)).join("|");
-    const workerArgs = opts?.workers ? ` --workers=${opts.workers}` : "";
-    const cmd = `${this.baseCommand} --grep "${pattern}" --reporter json${workerArgs}`;
+    const { cmd, args } = parseBaseCommand(this.baseCommand);
+    const runArgs = [...args, "--grep", pattern, "--reporter", "json"];
+    if (opts?.workers) {
+      runArgs.push(`--workers=${opts.workers}`);
+    }
     const start = Date.now();
-    const { exitCode, stdout, stderr } = this.execFn(cmd, opts);
+    const { exitCode, stdout, stderr } = this.safeExecFn(cmd, runArgs, opts);
     const durationMs = Date.now() - start;
 
     let results: TestCaseResult[] = [];
@@ -93,8 +114,8 @@ export class PlaywrightRunner implements RunnerAdapter {
   }
 
   async listTests(opts?: ExecuteOpts): Promise<TestId[]> {
-    const cmd = `${this.baseCommand} --list --reporter json`;
-    const { stdout } = this.execFn(cmd, opts);
+    const { cmd, args } = parseBaseCommand(this.baseCommand);
+    const { stdout } = this.safeExecFn(cmd, [...args, "--list", "--reporter", "json"], opts);
     return parsePlaywrightList(stdout);
   }
 }

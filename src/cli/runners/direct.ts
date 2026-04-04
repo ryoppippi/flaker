@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 
 export class DirectRunner {
   private command: string;
@@ -8,7 +8,9 @@ export class DirectRunner {
   }
 
   run(pattern: string): void {
-    const fullCommand = `${this.command} --grep "${pattern}"`;
-    execSync(fullCommand, { stdio: "inherit" });
+    const parts = this.command.split(/\s+/).filter(Boolean);
+    const cmd = parts[0];
+    const args = [...parts.slice(1), "--grep", pattern];
+    spawnSync(cmd, args, { stdio: "inherit" });
   }
 }
