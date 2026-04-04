@@ -56,20 +56,28 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
   let mut runs_imported = 0
   let mut tests_imported = 0
   let repo = "\{config.owner}/\{config.name}"
+  let max_import = 5 // limit for debugging
+  let mut imported_count = 0
   for run in runs.workflow_runs {
-    let run_id = run.id.to_int()
+    if imported_count >= max_import { break }
+    let run_id = run.id.to_int64()
     if run_exists(db, run_id) {
       continue
     }
     let sql = new_insert_run_sql(run_id, repo, run)
     exec_sql(db, sql)
     runs_imported = runs_imported + 1
+    imported_count = imported_count + 1
 
     // Download and process artifact
     let count = try {
       process_run_artifact(client, db, config, run)
     } catch {
-      _ => 0
+      e => {
+        let sha = run.head_sha.substring(end=7)
+        println("  \{sha}: artifact error: \{e}")
+        0
+      }
     }
     tests_imported = tests_imported + count
     if count > 0 {
@@ -91,7 +99,7 @@ async fn cmd_collect(_args : Array[String]) -> Unit {
 
 ///|
 fn new_insert_run_sql(
-  run_id : Int,
+  run_id : Int64,
   repo : String,
   run : @github_actions.WorkflowRun,
 ) -> String {
@@ -166,7 +174,7 @@ fn query_int(db : @duckdb.Connection, sql : String) -> Int {
 }
 
 ///|
-fn run_exists(db : @duckdb.Connection, run_id : Int) -> Bool {
+fn run_exists(db : @duckdb.Connection, run_id : Int64) -> Bool {
   query_int(
     db,
     "SELECT COUNT(*)::INTEGER FROM workflow_runs WHERE id = \{run_id}",

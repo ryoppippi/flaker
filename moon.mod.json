@@ -4,7 +4,7 @@
   "deps": {
     "mizchi/bitflow": "0.4.1",
     "mizchi/parquet": "0.2.0",
-    "mizchi/github": "0.1.0",
+    "mizchi/github": "0.1.2",
     "bobzhang/toml": "0.2.0",
     "f4ah6o/duckdb": "0.6.0",
     "mizchi/zlib": "0.4.3",

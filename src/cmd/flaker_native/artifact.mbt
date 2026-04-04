@@ -24,31 +24,34 @@ pub async fn process_run_artifact(
   config : FlakerConfig,
   run : @github_actions.WorkflowRun,
 ) -> Int {
-  let run_id = run.id.to_int()
-
   let artifacts = @github_actions.list_artifacts(
     client,
     config.owner,
     config.name,
-    run_id,
+    run.id,
   )
 
+  println("    artifacts: \{artifacts.artifacts.length()}")
   for artifact in artifacts.artifacts {
+    println("    - \{artifact.name} expired=\{artifact.expired}")
     if artifact.name == config.artifact_name && !artifact.expired {
       // Download artifact (ZIP)
       let zip_bytes = @github_actions.download_artifact(
         client,
         config.owner,
         config.name,
-        artifact.id.to_int(),
+        artifact.id,
       )
-      // Extract JSON files from ZIP and parse test results
+      println("    zip: \{zip_bytes.length()} bytes")
       let entries = unzip(zip_bytes)
+      println("    entries: \{entries.length()}")
       let mut count = 0
       for entry in entries {
+        println("      \{entry.name} (\{entry.data.length()} bytes)")
         if entry.name.has_suffix(".json") {
           let text = bytes_to_string(entry.data)
           let results = parse_vitest_json_text(text)
+          println("        → \{results.length()} test results")
           if results.length() > 0 {
             insert_test_results(db, results, run)
             count = count + results.length()
@@ -152,7 +155,7 @@ fn insert_test_results(
   results : Array[TestResult],
   run : @github_actions.WorkflowRun,
 ) -> Unit {
-  let run_id = run.id.to_int()
+  let run_id = run.id.to_int64()
   for r in results {
     let suite = r.suite.replace(old="'", new="''")
     let name = r.test_name.replace(old="'", new="''")
