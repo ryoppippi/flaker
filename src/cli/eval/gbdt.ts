@@ -28,49 +28,53 @@ function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
 }
 
-/** Find the best split for a single feature (decision stump) */
+/** Find the best split for a single feature (decision stump).
+ *  O(n log n) via sorted prefix sums instead of O(n²). */
 function findBestSplit(
   features: number[],
   residuals: number[],
   weights: number[],
 ): { threshold: number; leftValue: number; rightValue: number; gain: number } {
-  // Sort indices by feature value
+  const n = features.length;
   const indices = features.map((_, i) => i).sort((a, b) => features[a] - features[b]);
+
+  // Compute total sums
+  let totalResidualSum = 0;
+  let totalWeightSum = 0;
+  for (let i = 0; i < n; i++) {
+    totalResidualSum += residuals[indices[i]];
+    totalWeightSum += weights[indices[i]];
+  }
 
   let bestGain = -Infinity;
   let bestThreshold = 0;
   let bestLeftValue = 0;
   let bestRightValue = 0;
 
-  // Try each possible split point
-  for (let splitIdx = 0; splitIdx < indices.length - 1; splitIdx++) {
-    const threshold = (features[indices[splitIdx]] + features[indices[splitIdx + 1]]) / 2;
+  // Sweep left-to-right, accumulating left sums
+  let leftSum = 0;
+  let leftWeightSum = 0;
 
-    let leftSum = 0, leftWeightSum = 0;
-    let rightSum = 0, rightWeightSum = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const idx = indices[i];
+    leftSum += residuals[idx];
+    leftWeightSum += weights[idx];
 
-    for (let i = 0; i < indices.length; i++) {
-      const idx = indices[i];
-      if (features[idx] <= threshold) {
-        leftSum += residuals[idx];
-        leftWeightSum += weights[idx];
-      } else {
-        rightSum += residuals[idx];
-        rightWeightSum += weights[idx];
-      }
-    }
+    // Skip if same feature value as next (no valid split between equal values)
+    if (features[indices[i]] === features[indices[i + 1]]) continue;
+
+    const rightSum = totalResidualSum - leftSum;
+    const rightWeightSum = totalWeightSum - leftWeightSum;
 
     if (leftWeightSum === 0 || rightWeightSum === 0) continue;
 
-    const leftValue = leftSum / leftWeightSum;
-    const rightValue = rightSum / rightWeightSum;
     const gain = (leftSum * leftSum) / leftWeightSum + (rightSum * rightSum) / rightWeightSum;
 
     if (gain > bestGain) {
       bestGain = gain;
-      bestThreshold = threshold;
-      bestLeftValue = leftValue;
-      bestRightValue = rightValue;
+      bestThreshold = (features[indices[i]] + features[indices[i + 1]]) / 2;
+      bestLeftValue = leftSum / leftWeightSum;
+      bestRightValue = rightSum / rightWeightSum;
     }
   }
 

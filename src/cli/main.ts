@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Octokit } from "@octokit/rest";
-import { loadConfig } from "./config.js";
+import { loadConfig, writeSamplingConfig, type SamplingConfig } from "./config.js";
 import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
@@ -81,7 +81,7 @@ import { createRunner } from "./runners/index.js";
 import { resolveTestIdentity } from "./identity.js";
 import { toStoredTestResult } from "./storage/test-result-mapper.js";
 import { createResolver } from "./resolvers/index.js";
-import { resolveCurrentCommitSha } from "./core/git.js";
+import { resolveCurrentCommitSha, detectChangedFiles, detectRepoInfo } from "./core/git.js";
 import {
   formatQuarantineManifestReport,
   loadQuarantineManifest,
@@ -230,47 +230,88 @@ interface SamplingCliOpts {
 
 function addSamplingOptions<T extends Command>(cmd: T): T {
   return cmd
-    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt", "random")
+    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt")
     .option("--count <n>", "Number of tests to sample")
     .option("--percentage <n>", "Percentage of tests to sample")
     .option("--skip-quarantined", "Exclude quarantined tests")
     .option("--changed <files>", "Comma-separated list of changed files (for affected/hybrid)")
-    .option("--co-failure-days <days>", "Co-failure analysis window in days (default: 90)")
-    .option("--holdout-ratio <ratio>", "Fraction of skipped tests to run as holdout (0-1, default: 0)")
-    .option("--model-path <path>", "Path to GBDT model JSON (default: .flaker/models/gbdt.json)") as T;
+    .option("--co-failure-days <days>", "Co-failure analysis window in days")
+    .option("--holdout-ratio <ratio>", "Fraction of skipped tests to run as holdout (0-1)")
+    .option("--model-path <path>", "Path to GBDT model JSON") as T;
+}
+
+/** Merge CLI options with [sampling] config. CLI args take priority. */
+function resolveSamplingOpts(
+  opts: SamplingCliOpts,
+  sampling?: SamplingConfig,
+): SamplingCliOpts {
+  return {
+    strategy: opts.strategy ?? sampling?.strategy ?? "weighted",
+    count: opts.count,
+    percentage: opts.percentage ?? (sampling?.percentage != null ? String(sampling.percentage) : undefined),
+    skipQuarantined: opts.skipQuarantined ?? sampling?.skip_quarantined,
+    changed: opts.changed,
+    coFailureDays: opts.coFailureDays ?? (sampling?.co_failure_days != null ? String(sampling.co_failure_days) : undefined),
+    holdoutRatio: opts.holdoutRatio ?? (sampling?.holdout_ratio != null ? String(sampling.holdout_ratio) : undefined),
+    modelPath: opts.modelPath ?? sampling?.model_path,
+  };
+}
+
+/** Auto-detect changed files if not explicitly provided. */
+function resolveChangedFiles(cwd: string, explicit?: string): string[] | undefined {
+  const parsed = parseChangedFiles(explicit);
+  if (parsed) return parsed;
+  // Auto-detect from git
+  const detected = detectChangedFiles(cwd);
+  return detected.length > 0 ? detected : undefined;
 }
 
 program
   .name("flaker")
-  .description("Sample meaningful tests from CI and flaky history")
+  .description("Intelligent test selection — run fewer tests, catch more failures")
   .version("0.1.0")
   .showHelpAfterError()
   .showSuggestionAfterError();
 
 appendHelpText(
   program,
-  formatHelpExamples("Quick start", [
-    "flaker init --owner your-org --name your-repo",
-    "flaker collect --last 30",
-    "flaker run --strategy hybrid --count 25 --changed src/foo.ts",
-    "flaker eval --markdown --window 7",
-  ]) + formatHelpExamples("Common workflows", [
-    "Build history from CI:    flaker collect --last 30",
-    "Import local history:     flaker collect-local --last 20",
-    "Inspect flaky behavior:   flaker flaky && flaker reason",
-    "Review sampling quality:  flaker eval --markdown --window 7",
-  ]),
+  "\nGetting started (3 commands):\n" +
+  "  flaker init                  Set up flaker.toml (auto-detects repo from git)\n" +
+  "  flaker calibrate             Analyze history, write optimal sampling config\n" +
+  "  flaker run                   Select and execute tests (uses calibrated config)\n" +
+  "\n" +
+  "Building history:\n" +
+  "  flaker collect --last 30     Import CI runs from GitHub Actions\n" +
+  "  flaker collect-local         Import local actrun history\n" +
+  "\n" +
+  "Analysis:\n" +
+  "  flaker flaky                 Show flaky test rankings\n" +
+  "  flaker insights              Compare CI vs local failure patterns\n" +
+  "  flaker eval                  Measure sampling accuracy against CI\n" +
+  "\n" +
+  "Advanced:\n" +
+  "  flaker train                 Train GBDT model for ML-based selection\n" +
+  "  flaker eval-fixture          Benchmark strategies with synthetic data\n" +
+  "  flaker doctor                Check runtime requirements\n",
 );
 
 // --- init ---
 program
   .command("init")
-  .description("Initialize flaker configuration")
-  .requiredOption("--owner <owner>", "Repository owner")
-  .requiredOption("--name <name>", "Repository name")
-  .action((opts: { owner: string; name: string }) => {
-    runInit(process.cwd(), opts);
-    console.log("Initialized flaker.toml");
+  .description("Create flaker.toml (auto-detects owner/name from git remote)")
+  .option("--owner <owner>", "Repository owner (auto-detected from git remote)")
+  .option("--name <name>", "Repository name (auto-detected from git remote)")
+  .action((opts: { owner?: string; name?: string }) => {
+    const cwd = process.cwd();
+    const detected = detectRepoInfo(cwd);
+    const owner = opts.owner ?? detected?.owner ?? "local";
+    const name = opts.name ?? detected?.name ?? basename(cwd);
+    runInit(cwd, { owner, name });
+    if (!detected && !opts.owner) {
+      console.log(`Initialized flaker.toml (${owner}/${name}) — no git remote found, using defaults`);
+    } else {
+      console.log(`Initialized flaker.toml (${owner}/${name})`);
+    }
   });
 
 // --- collect ---
@@ -407,25 +448,27 @@ program
 addSamplingOptions(
   program
     .command("sample")
-    .description("Choose a smaller local test set"),
+    .description("Select tests without executing (dry run of test selection)"),
 ).action(
-    async (opts: SamplingCliOpts) => {
+    async (rawOpts: SamplingCliOpts) => {
       const config = loadConfig(process.cwd());
+      const opts = resolveSamplingOpts(rawOpts, config.sampling);
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
       try {
-        const changedFiles = parseChangedFiles(opts.changed);
+        const cwd = process.cwd();
+        const changedFiles = resolveChangedFiles(cwd, opts.changed);
         const mode = parseSamplingMode(opts.strategy);
         const manifest = opts.skipQuarantined
-          ? loadQuarantineManifestIfExists({ cwd: process.cwd() })
+          ? loadQuarantineManifestIfExists({ cwd })
           : null;
-        const listedTests = await listRunnerTests(process.cwd(), config.runner);
+        const listedTests = await listRunnerTests(cwd, config.runner);
 
         // Create resolver from config for affected/hybrid
         let resolver;
         if ((mode === "affected" || mode === "hybrid") && changedFiles?.length) {
-          resolver = await createConfiguredResolver(process.cwd(), config.affected);
+          resolver = await createConfiguredResolver(cwd, config.affected);
         }
 
         const kpi = await runSamplingKpi({ store });
@@ -476,18 +519,19 @@ addSamplingOptions(
 addSamplingOptions(
   program
     .command("run")
-    .description("Select tests and execute them locally")
+    .description("Select and run tests (auto-detects changed files and strategy from config)")
     .option("--runner <runner>", "Runner type: direct or actrun", "direct")
     .option("--retry", "Retry failed tests (actrun only)"),
 ).action(
-    async (opts: SamplingCliOpts & { runner: string; retry?: boolean }) => {
+    async (rawOpts: SamplingCliOpts & { runner: string; retry?: boolean }) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
+      const opts = { ...resolveSamplingOpts(rawOpts, config.sampling), runner: rawOpts.runner, retry: rawOpts.retry };
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
       try {
-        const changedFiles = parseChangedFiles(opts.changed);
+        const changedFiles = resolveChangedFiles(cwd, opts.changed);
         const mode = parseSamplingMode(opts.strategy);
         const manifest = opts.skipQuarantined
           ? loadQuarantineManifestIfExists({ cwd })
@@ -528,6 +572,7 @@ addSamplingOptions(
                 branch: result.headBranch,
                 commitSha: result.headSha,
                 event: "actrun-run",
+                source: "local",
                 status: result.conclusion,
                 createdAt: new Date(result.startedAt),
                 durationMs: result.durationMs,
@@ -577,6 +622,7 @@ addSamplingOptions(
           branch: "local",
           commitSha,
           event: "flaker-local-run",
+          source: "local",
           status: runResult.exitCode === 0 ? "success" : "failure",
           createdAt,
           durationMs: runResult.durationMs,
@@ -590,6 +636,11 @@ addSamplingOptions(
             }),
           ),
         );
+        // Collect commit_changes for co-failure learning
+        if (commitSha && !commitSha.startsWith("local-")) {
+          const { collectCommitChanges } = await import("./commands/collect-commit-changes.js");
+          await collectCommitChanges(store, cwd, commitSha);
+        }
         // Store holdout test results with is_holdout marker
         if (runResult.holdoutResult) {
           await store.insertTestResults(
@@ -1367,6 +1418,69 @@ program
     },
   );
 
+// --- insights ---
+program
+  .command("insights")
+  .description("Compare CI vs local failure patterns to identify environment-specific issues")
+  .option("--window-days <days>", "Analysis window in days", "90")
+  .option("--top <n>", "Number of tests to show per category", "20")
+  .action(async (opts: { windowDays: string; top: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const { runInsights, formatInsights } = await import("./commands/insights.js");
+      const result = await runInsights({
+        store,
+        windowDays: parseInt(opts.windowDays, 10),
+        top: parseInt(opts.top, 10),
+      });
+      console.log(formatInsights(result));
+    } finally {
+      await store.close();
+    }
+  });
+
+// --- calibrate ---
+program
+  .command("calibrate")
+  .description("Analyze project history and write optimal [sampling] config to flaker.toml")
+  .option("--window-days <days>", "Analysis window in days", "90")
+  .option("--dry-run", "Show recommendation without writing to flaker.toml")
+  .action(async (opts: { windowDays: string; dryRun?: boolean }) => {
+    const { existsSync } = await import("node:fs");
+    const cwd = process.cwd();
+    const config = loadConfig(cwd);
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const { analyzeProject, recommendSampling, formatCalibrationReport } = await import("./commands/calibrate.js");
+
+      const hasResolver = config.affected.resolver !== "" && config.affected.resolver !== "none";
+      const modelPath = resolve(".flaker", "models", "gbdt.json");
+      const hasGBDTModel = existsSync(modelPath);
+
+      const profile = await analyzeProject(store, {
+        hasResolver,
+        hasGBDTModel,
+        windowDays: parseInt(opts.windowDays, 10),
+      });
+      const sampling = recommendSampling(profile);
+      const result = { profile, sampling };
+
+      console.log(formatCalibrationReport(result));
+
+      if (!opts.dryRun) {
+        writeSamplingConfig(cwd, sampling);
+        console.log(`\nWritten to flaker.toml [sampling] section.`);
+      } else {
+        console.log(`\n(dry run — flaker.toml not modified)`);
+      }
+    } finally {
+      await store.close();
+    }
+  });
+
 // --- context ---
 program
   .command("context")
@@ -1418,32 +1532,30 @@ program
     "flaker flaky --trend --test \"should redirect\"",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "sample"), [
+    "flaker sample",
     "flaker sample --strategy hybrid --count 25",
-    "flaker sample --strategy affected --changed src/foo.ts",
-    "flaker sample --strategy weighted --percentage 20 --skip-quarantined",
+    "flaker sample --changed src/foo.ts",
   ]);
   appendHelpText(
     program.commands.find((command) => command.name() === "sample") as Command,
-    formatHelpExamples("Strategies", [
-      "random    Select tests uniformly at random",
-      "weighted  Prioritize tests with high flaky rates and co-failure correlation",
-      "affected  Select only tests related to changed files (requires --changed)",
-      "hybrid    Combine affected + co-failure + previously-failed + weighted fill (recommended)",
-    ]),
+    "\nStrategy and percentage are read from flaker.toml [sampling] if present.\n" +
+    "Changed files are auto-detected from git diff.\n" +
+    "\nStrategies:\n" +
+    "  random    Uniform random\n" +
+    "  weighted  Prioritize by flaky rate + co-failure (default without config)\n" +
+    "  hybrid    affected + co-failure + weighted fill (best with resolver)\n" +
+    "  gbdt      ML model ranking (requires `flaker train` first)\n",
   );
   appendExamplesToCommand(program.commands.find((command) => command.name() === "run"), [
-    "flaker run --strategy hybrid --count 25",
-    "flaker run --strategy affected --changed src/foo.ts",
-    "flaker run --runner actrun --strategy hybrid --count 50",
+    "flaker run",
+    "flaker run --strategy hybrid",
+    "flaker run --runner actrun",
   ]);
   appendHelpText(
     program.commands.find((command) => command.name() === "run") as Command,
-    formatHelpExamples("Strategies", [
-      "random    Select tests uniformly at random",
-      "weighted  Prioritize tests with high flaky rates and co-failure correlation",
-      "affected  Select only tests related to changed files (requires --changed)",
-      "hybrid    Combine affected + co-failure + previously-failed + weighted fill (recommended)",
-    ]),
+    "\nNo flags needed if flaker.toml has [sampling] config (set by `flaker calibrate`).\n" +
+    "Changed files are auto-detected from git diff.\n" +
+    "Results are saved to the database for learning.\n",
   );
   appendExamplesToCommand(program.commands.find((command) => command.name() === "affected"), [
     "flaker affected src/foo.ts src/bar.ts",
@@ -1517,7 +1629,7 @@ if (isDirectCliExecution()) {
     if (err instanceof Error) {
       if (err.message.includes("Config file not found") || err.message.includes("flaker.toml")) {
         console.error(`Error: ${err.message}`);
-        console.error(`Run 'flaker init --owner <org> --name <repo>' to create one.`);
+        console.error(`Run 'flaker init' to create one.`);
         process.exit(1);
       }
       if (err.message.includes("DuckDB") || err.message.includes("duckdb")) {
@@ -1526,8 +1638,11 @@ if (isDirectCliExecution()) {
         process.exit(1);
       }
     }
-    // Unknown error - show message without full stack
+    // Unknown error
     console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
     process.exit(1);
   });
 }

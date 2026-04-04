@@ -1,6 +1,19 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "smol-toml";
+
+export interface SamplingConfig {
+  strategy: string;
+  percentage?: number;
+  holdout_ratio?: number;
+  co_failure_days?: number;
+  model_path?: string;
+  skip_quarantined?: boolean;
+  calibrated_at?: string;
+  detected_flaky_rate?: number;
+  detected_co_failure_strength?: number;
+  detected_test_count?: number;
+}
 
 export interface FlakerConfig {
   repo: { owner: string; name: string };
@@ -16,6 +29,7 @@ export interface FlakerConfig {
   affected: { resolver: string; config: string };
   quarantine: { auto: boolean; flaky_rate_threshold: number; min_runs: number };
   flaky: { window_days: number; detection_threshold: number };
+  sampling?: SamplingConfig;
 }
 
 const DEFAULT_CONFIG: FlakerConfig = {
@@ -62,4 +76,41 @@ export function loadConfig(dir: string): FlakerConfig {
   }
   const parsed = parse(content) as unknown as Record<string, unknown>;
   return deepMerge(DEFAULT_CONFIG, parsed);
+}
+
+/**
+ * Write or update the [sampling] section in flaker.toml.
+ * Preserves existing content by replacing the section if it exists,
+ * or appending it at the end.
+ */
+export function writeSamplingConfig(dir: string, sampling: SamplingConfig): void {
+  const filePath = join(dir, "flaker.toml");
+  const content = readFileSync(filePath, "utf-8");
+
+  const lines: string[] = [
+    "[sampling]",
+    `strategy = "${sampling.strategy}"`,
+  ];
+  if (sampling.percentage != null) lines.push(`percentage = ${sampling.percentage}`);
+  if (sampling.holdout_ratio != null) lines.push(`holdout_ratio = ${sampling.holdout_ratio}`);
+  if (sampling.co_failure_days != null) lines.push(`co_failure_days = ${sampling.co_failure_days}`);
+  if (sampling.model_path != null) lines.push(`model_path = "${sampling.model_path}"`);
+  if (sampling.skip_quarantined != null) lines.push(`skip_quarantined = ${sampling.skip_quarantined}`);
+  if (sampling.calibrated_at != null) lines.push(`calibrated_at = "${sampling.calibrated_at}"`);
+  if (sampling.detected_flaky_rate != null) lines.push(`detected_flaky_rate = ${sampling.detected_flaky_rate}`);
+  if (sampling.detected_co_failure_strength != null) lines.push(`detected_co_failure_strength = ${sampling.detected_co_failure_strength}`);
+  if (sampling.detected_test_count != null) lines.push(`detected_test_count = ${sampling.detected_test_count}`);
+
+  const samplingBlock = lines.join("\n") + "\n";
+
+  // Replace existing [sampling] section or append
+  const sectionRegex = /^\[sampling\]\n(?:(?!\n\[)[^\n]*\n)*/m;
+  let updated: string;
+  if (sectionRegex.test(content)) {
+    updated = content.replace(sectionRegex, samplingBlock);
+  } else {
+    updated = content.trimEnd() + "\n\n" + samplingBlock;
+  }
+
+  writeFileSync(filePath, updated, "utf-8");
 }

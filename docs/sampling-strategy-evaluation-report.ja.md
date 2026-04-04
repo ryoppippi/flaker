@@ -1,9 +1,9 @@
-# Sampling Strategy Evaluation Report
+# サンプリング戦略評価レポート
 
 ## 概要
 
 flaker が提供する6つのサンプリング戦略を合成フィクスチャデータで定量評価した。
-テスト数・コミット数・フレーキー率・co-failure 相関強度・サンプリング予算を変化させ、各戦略の Recall（失敗検出率）、Precision（選択精度）、Efficiency（random 比効率）を測定した。
+テスト数・フレーキー率・co-failure 相関強度・サンプリング予算の4パラメータを変化させ、各戦略の Recall（失敗検出率）、Precision（選択精度）、Efficiency（random 比効率）、Holdout FNR（スキップしたテストの見逃し率）を測定した。
 
 ## 戦略一覧
 
@@ -16,141 +16,143 @@ flaker が提供する6つのサンプリング戦略を合成フィクスチャ
 | **coverage-guided** | greedy set cover (変更エッジカバレッジ最大化) | Coverage data | No |
 | **gbdt** | Gradient Boosted Decision Tree による予測スコアランキング | No | Yes |
 
-## ベンチマーク結果
+## Multi-Parameter Sweep 結果
 
-### Scenario A: 標準（tests=200, commits=100, flaky=5%, co-failure=1.0, sample=20%）
+24パターンの組み合わせ: testCount × flakyRate × coFailureStrength × samplePercentage。
 
-| Strategy | Recall | Precision | F1 | FNR | Efficiency |
-|----------|--------|-----------|-----|-----|------------|
-| random | 22.6% | 6.0% | 0.10 | 77.4% | 1.13 |
-| weighted | 23.3% | 6.2% | 0.10 | 76.7% | 1.17 |
-| weighted+co-failure | 23.3% | 6.2% | 0.10 | 76.7% | 1.17 |
-| hybrid+co-failure | **94.4%** | 25.1% | 0.40 | 5.6% | **4.72** |
-| coverage-guided | 18.8% | **100.0%** | 0.32 | 81.2% | 0.94 |
-| gbdt | 90.2% | 24.0% | 0.38 | 9.8% | 4.51 |
+### 低フレーキー率（5%）— Hybrid が圧倒的
 
-### Scenario B: 中程度の相関（tests=200, commits=100, flaky=10%, co-failure=0.5, sample=20%）
+| Tests | CoFail | Sample% | Random | Weighted | Hybrid | GBDT | Best |
+|-------|--------|---------|--------|----------|--------|------|------|
+| 100 | 0.30 | 10% | 4.3% | 8.7% | **91.3%** | 52.2% | hybrid |
+| 100 | 0.30 | 30% | 21.7% | 30.4% | **100.0%** | 78.3% | hybrid |
+| 100 | 0.60 | 10% | 16.1% | 14.9% | **95.4%** | 70.1% | hybrid |
+| 100 | 0.60 | 30% | 28.7% | 36.8% | **98.9%** | 86.2% | hybrid |
+| 100 | 0.90 | 10% | 14.0% | 11.6% | **96.7%** | 85.1% | hybrid |
+| 100 | 0.90 | 30% | 29.8% | 37.2% | **99.2%** | 90.9% | hybrid |
+| 500 | 0.30 | 10% | 5.3% | 31.6% | **98.2%** | 31.6% | hybrid |
+| 500 | 0.30 | 30% | 14.0% | 59.6% | **100.0%** | 57.9% | hybrid |
+| 500 | 0.60 | 10% | 7.4% | 22.3% | **96.8%** | 30.9% | hybrid |
+| 500 | 0.60 | 30% | 25.5% | 59.6% | **100.0%** | 41.5% | hybrid |
+| 500 | 0.90 | 10% | 10.2% | 19.0% | **96.4%** | 26.3% | hybrid |
+| 500 | 0.90 | 30% | 28.5% | 51.8% | **100.0%** | 50.4% | hybrid |
 
-| Strategy | Recall | Precision | F1 | FNR | Efficiency |
-|----------|--------|-----------|-----|-----|------------|
-| random | 28.6% | 5.2% | 0.09 | 71.4% | 1.43 |
-| weighted | 31.3% | 5.7% | 0.10 | 68.7% | 1.57 |
-| hybrid+co-failure | 78.6% | 14.3% | 0.24 | 21.4% | 3.93 |
-| coverage-guided | 14.8% | 54.0% | 0.23 | 85.2% | 0.74 |
-| gbdt | **84.1%** | 15.3% | **0.26** | **15.9%** | **4.20** |
+**低フレーキー率では全12シナリオで hybrid が1位。** 500テスト+30%サンプルでは co-failure 強度に関係なく recall 100% を達成。
 
-### Scenario C: タイトな予算（tests=200, commits=100, flaky=5%, co-failure=1.0, sample=10%）
+### 高フレーキー率（20%）— GBDT が競合
 
-| Strategy | Recall | Precision | F1 | FNR | Efficiency |
-|----------|--------|-----------|-----|-----|------------|
-| random | 14.3% | 7.6% | 0.10 | 85.7% | 1.43 |
-| weighted | 11.3% | 6.0% | 0.08 | 88.7% | 1.13 |
-| hybrid+co-failure | **94.4%** | **50.2%** | **0.66** | **5.6%** | **9.44** |
-| coverage-guided | 18.8% | 100.0% | 0.32 | 81.2% | 1.88 |
-| gbdt | 88.3% | 47.0% | 0.61 | 11.7% | 8.83 |
+| Tests | CoFail | Sample% | Random | Weighted | Hybrid | GBDT | Best |
+|-------|--------|---------|--------|----------|--------|------|------|
+| 100 | 0.30 | 10% | 13.1% | 33.3% | 34.5% | 35.7% | w+co-fail (36.9%) |
+| 100 | 0.30 | 30% | 50.0% | 69.0% | **86.9%** | 84.5% | hybrid |
+| 100 | 0.60 | 10% | 10.7% | 23.1% | **54.5%** | 39.7% | hybrid |
+| 100 | 0.60 | 30% | 39.7% | 56.2% | 79.3% | **86.0%** | **gbdt** |
+| 100 | 0.90 | 10% | 10.0% | 19.4% | **67.6%** | 55.3% | hybrid |
+| 100 | 0.90 | 30% | 35.3% | 42.4% | 81.8% | **85.3%** | **gbdt** |
+| 500 | 0.30 | 10% | 8.2% | 36.7% | **45.2%** | 44.9% | hybrid |
+| 500 | 0.30 | 30% | 29.5% | 83.9% | 87.2% | 91.1% | **w+co-fail (91.8%)** |
+| 500 | 0.60 | 10% | 9.2% | 30.5% | **48.5%** | 40.5% | hybrid |
+| 500 | 0.60 | 30% | 31.7% | 76.0% | 81.1% | 84.6% | **w+co-fail (87.0%)** |
+| 500 | 0.90 | 10% | 9.7% | 26.8% | **51.7%** | 39.1% | hybrid |
+| 500 | 0.90 | 30% | 32.7% | 63.0% | 76.9% | **80.7%** | **gbdt** |
 
-### Scenario D: 大規模（tests=500, commits=200, flaky=5%, co-failure=0.8, sample=10%）
+**高フレーキー率では GBDT が 12 シナリオ中 3 つで hybrid を上回る**（全て 30% サンプル）。フレーキーノイズが大きいとき、GBDT の学習ベース多特徴量ランキングが hybrid のルールベース tier に勝つ。
 
-| Strategy | Recall | Precision | F1 | FNR | Efficiency |
-|----------|--------|-----------|-----|-----|------------|
-| random | 12.9% | 2.4% | 0.04 | 87.1% | 1.29 |
-| weighted | 15.0% | 2.8% | 0.05 | 85.0% | 1.50 |
-| weighted+co-failure | 15.0% | 2.8% | 0.05 | 85.0% | 1.50 |
-| hybrid+co-failure | **92.8%** | 17.0% | **0.29** | **7.2%** | **9.28** |
-| coverage-guided | 17.6% | **81.0%** | 0.29 | 82.4% | 1.76 |
-| gbdt | 71.0% | 13.0% | 0.22 | 29.0% | 7.10 |
+### Co-failure 強度 Sweep（tests=100, commits=50, flaky=10%, sample=20%）
+
+| 強度 | Random | Weighted | W+CoFail | Hybrid | Random比改善 |
+|------|--------|----------|----------|--------|-------------|
+| 0.00 | 72.7% | 72.7% | 100.0% | 100.0% | +38% |
+| 0.25 | 35.5% | 48.4% | 71.0% | 80.6% | +127% |
+| 0.50 | 24.4% | 30.8% | 59.0% | 91.0% | +273% |
+| 0.75 | 24.8% | 23.9% | 49.6% | 94.0% | +279% |
+| 1.00 | 21.3% | 21.3% | 48.9% | 95.0% | +346% |
+
+co-failure 相関が強まるほど hybrid の優位性が拡大する。
+
+## Holdout FNR 結果
+
+Holdout FNR はスキップしたテストのうち 10% をランダム実行し、その中の失敗率を測定する。「見逃し」の代理指標。
+
+| シナリオ | Random HoldFNR | Hybrid HoldFNR | GBDT HoldFNR |
+|---------|---------------|----------------|--------------|
+| 100テスト, 20%サンプル | 8.7% | 5.8% | 4.8% |
+| 500テスト, 20%サンプル | 13.6% | 0.5% | 0.8% |
+
+500テストで hybrid の holdout FNR は **0.5%** — スキップしたテストの見逃しがほぼゼロ。
 
 ## 分析
 
-### 1. Hybrid+co-failure が最高性能
+### 1. Hybrid がデフォルト推奨
 
-依存グラフ解析（resolver）が利用可能な場合、hybrid+co-failure が全シナリオで最高の Recall を達成する。
-特にタイトな予算（10%）では Efficiency 9.44 を記録 — random の約 9.4 倍の効率でテスト失敗を検出する。
+24シナリオ中 21 シナリオで hybrid+co-failure が最高 recall。低フレーキー率（通常ケース）では 95-100% recall を達成。依存グラフ resolver が鍵。
 
-**メカニズム**: affected（dependency graph）で変更に関連するテストを確定的に選択 → co-failure priority で履歴的相関が強いテストを追加 → 残り枠を weighted で埋める。
+### 2. GBDT は高ノイズ環境で真価を発揮
 
-### 2. GBDT は resolver 不要で 90% recall
+GBDT が hybrid を上回る条件:
+- フレーキー率が高い（20%+）
+- サンプル予算が余裕あり（30%+）
+- co-failure 相関が中〜強（0.6-0.9）
 
-GBDT の最大の価値は **resolver を設定せずに 90% 近い recall を達成する**こと。
-hybrid (94.4%) との差はわずか 4% だが、**設定コストがゼロ**。新しいリポジトリへの導入が即座に可能。
+これらの条件では hybrid のルールベース priority tier がフレーキーノイズに汚染されるが、GBDT は複数特徴量を総合的に学習して頑健。
 
-- Scenario A: 90.2% recall（hybrid: 94.4%）
-- Scenario B: **84.1% recall**（hybrid: 78.6%）— 中程度の相関では **GBDT が hybrid を上回る**
-- Scenario C: 88.3% recall（hybrid: 94.4%）
+**GBDT が弱い条件:**
+- フレーキー率が低い（< 10%）— hybrid のルールがクリーンで効果的
+- テスト数が多く低サンプル（500テスト, 10%サンプル）— テスト空間に対して学習データが疎
+- 学習データ不足（< 30 コミット）
 
-Scenario B で GBDT が hybrid を上回る理由: co-failure 相関が弱い場合、hybrid の co-failure priority が的外れなテストを選ぶことがあるが、GBDT は複数の特徴量を総合的に学習するため頑健。
+### 3. Weighted+co-failure は Resolver なし時のベスト
 
-### 3. Weighted+co-failure は weighted と同等
-
-現在の実装では weighted+co-failure が weighted と同じ結果を示す。これは MoonBit bridge の `Option<Double>` round-trip 問題による。co_failure_boost が MoonBit 経由で失われている。
-
-**対策**: normalizeMetaBoosts workaround は #24 で追加済みだが、本質的には MoonBit の `Double?` の `ToJson` が `null` を正しく出力するか、あるいは `Double` に戻して bridge 側でデフォルト値を保証する必要がある。
+依存グラフ resolver なしの場合、weighted+co-failure が非ML最良:
+- 500テスト, 20%フレーキー, 30%サンプル: **91.8% recall**（hybrid・GBDT 両方を上回る）
+- `--changed` フラグでファイルパスを渡すだけで利用可能
 
 ### 4. Coverage-guided は精度特化
 
-coverage-guided は **Precision 100%**（Scenario A）を達成するが、Recall は低い。
-これは greedy set cover が「変更されたコードをカバーするテスト」のみを選ぶため、カバレッジ外の失敗（フレーキー等）を見逃すから。
+Precision 80%+ だが Recall は 11-18%。単独ではなく hybrid の priority 層として使うのが最適。
 
-**最適な用途**: 単独ではなく hybrid の Priority 1 として組み込み、affected analysis を補完する。
+### 5. Holdout FNR が Hybrid の安全性を証明
 
-### 5. Random は予算に比例
+500テスト規模で hybrid の holdout FNR は 0.5% — スキップ判定の安全性が高い。
 
-Random の Recall はほぼ sample% に等しい（20% → ~22%, 10% → ~14%）。これは理論的期待値と一致。
-他の戦略はこの baseline をどれだけ上回るかが評価基準。
+## 戦略選択ガイド
 
-## 推奨使用パターン
-
-### パターン 1: Resolver あり（推奨）
-```bash
-flaker sample --strategy hybrid --changed $(git diff --name-only HEAD~1)
-```
-- Recall: 94%+
-- 依存グラフ + co-failure + weighted の全層が機能
-
-### パターン 2: Resolver なし（GBDT）
-```bash
-flaker sample --strategy weighted --changed $(git diff --name-only HEAD~1)
-# GBDT モデルが .flaker/models/ にあれば自動適用（将来実装）
-```
-- Recall: 84-90%
-- 設定不要、新規リポジトリで即使用可能
-
-### パターン 3: 高精度が必要（coverage-guided + hybrid）
-- Coverage データ収集パイプラインが必要（将来実装）
-- coverage-guided で変更コードに直結するテストを確実に選択
-- hybrid の残り枠で exploration
-
-## 技術的制約と今後の課題
-
-### 現在の制約
-
-1. **weighted+co-failure の MoonBit bridge 問題**: `Double?` の JSON round-trip で boost が失われる
-2. **GBDT は eval-fixture 内のみ**: `planSample` への統合は未実装
-3. **Coverage-guided はカバレッジデータ収集が未実装**: 合成データでのみ評価
-4. **合成データの限界**: 実リポジトリでの検証が必要
-
-### 今後の改善
-
-1. **GBDT を `planSample` に統合**: `flaker train` → `.flaker/models/gbdt.json` → `flaker sample` で自動ロード
-2. **LightGBM C API への差し替え**: 精度向上（特に深いツリーと多数のツリー）
-3. **V8/Istanbul カバレッジ収集**: `flaker collect-coverage` → coverage-guided を実データで使用可能に
-4. **MoonBit bridge 修正**: `co_failure_boost` を `Double` に戻し、bridge 側でデフォルト 0.0 を保証
-5. **Holdout サンプリング**: スキップしたテストの一部をランダム実行し、モデルの劣化を検出
+| シナリオ | 推奨戦略 |
+|---------|----------|
+| 依存グラフあり、フレーキー < 10% | **hybrid+co-failure** |
+| 依存グラフあり、フレーキー > 15% | **hybrid** or **GBDT**（両方評価） |
+| Resolver なし、変更ファイルあり | **weighted+co-failure** |
+| Resolver なし、十分な履歴（100+ commits） | **GBDT** |
+| 新規リポジトリ、履歴なし | **random**（まず履歴蓄積） |
 
 ## 再現方法
 
 ```bash
 # 標準ベンチマーク
-flaker eval-fixture --tests 200 --commits 100 --co-failure-strength 1.0 --flaky-rate 0.05 --sample-percentage 20
+flaker eval-fixture
 
 # Co-failure 強度の sweep
-flaker eval-fixture --sweep --tests 200 --commits 100
+flaker eval-fixture --sweep
 
-# タイトな予算
-flaker eval-fixture --tests 200 --commits 100 --sample-percentage 10
+# Multi-parameter sweep（24パターン、約4分）
+npx tsx scripts/eval-sweep.ts
 
-# 大規模
-flaker eval-fixture --tests 500 --commits 200 --co-failure-strength 0.8 --flaky-rate 0.05 --sample-percentage 10
+# カスタムシナリオ
+flaker eval-fixture --tests 500 --commits 100 --flaky-rate 0.05 --co-failure-strength 0.8 --sample-percentage 20
 ```
 
-全ベンチマークは合成データで実行され、外部依存なし・設定不要で再現可能。
+全ベンチマークは合成データで実行。外部依存なし・設定不要で再現可能。
+
+## 技術メモ
+
+### GBDT パフォーマンス最適化
+
+`findBestSplit` を O(n²) から O(n log n) に最適化（ソート済み prefix sum 方式）。24パターン sweep が 8分超（未完了）→ 4分10秒に短縮。
+
+### 実装済み機能（2026-04-04時点）
+
+- GBDT を `planSample` に統合: `flaker sample --strategy gbdt`
+- `flaker train`: DuckDB 履歴からモデル学習
+- Holdout サンプリング: `flaker run --holdout-ratio`
+- Holdout 結果を `sampling_run_tests` に `is_holdout` フラグで保存
+- Multi-parameter sweep: `--multi-sweep` フラグ

@@ -10,5 +10,15 @@ type = "vitest"
 artifact_name = "vitest-report"
 
 [runner]
-type = "direct"
+type = "vitest"
 command = "pnpm exec vitest run"
+
+[sampling]
+strategy = "hybrid"
+percentage = 30
+holdout_ratio = 0.1
+co_failure_days = 90
+calibrated_at = "2026-04-04"
+detected_flaky_rate = 0.005
+detected_co_failure_strength = 0.5
+detected_test_count = 437

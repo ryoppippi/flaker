@@ -36,11 +36,6 @@ fn command_spec(target_name : String) -> @argparse.Command {
 }
 
 ///|
-fn render_help(target_name : String) -> String {
-  command_spec(target_name).render_help()
-}
-
-///|
 fn render_version(target_name : String) -> String {
   "flaker core CLI \{command_version(target_name)}"
 }

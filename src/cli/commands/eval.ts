@@ -429,11 +429,15 @@ async function loadSamplingKpiBuilder(): Promise<
     const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as EvalCoreExports;
     if (typeof mod.build_sampling_kpi_json === "function") {
       return (rows) => {
-        const parsed = JSON.parse(
-          mod.build_sampling_kpi_json!(JSON.stringify(rows.map(toCoreCommitSignal))),
-        ) as unknown;
-        if (isExtendedSamplingKpiOutput(parsed)) {
-          return fromCoreSamplingKpi(parsed);
+        try {
+          const parsed = JSON.parse(
+            mod.build_sampling_kpi_json!(JSON.stringify(rows.map(toCoreCommitSignal))),
+          ) as unknown;
+          if (isExtendedSamplingKpiOutput(parsed)) {
+            return fromCoreSamplingKpi(parsed);
+          }
+        } catch {
+          // MoonBit bridge panic — fall through to TS fallback
         }
         return buildSamplingKpiFallback(rows);
       };

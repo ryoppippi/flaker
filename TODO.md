@@ -389,34 +389,34 @@ coverage-guided fuzzing の知見をテスト選択に応用する。
 
 ### 評価対象と検証観点
 
-- [ ] **Holdout サンプリング**
-  - 見逃し率（false negative rate）の計測が実際に機能するか
-  - holdout ratio の適正値（5%? 10%?）— 少なすぎると検出力不足、多すぎると時間節約が減る
-  - 合成フィクスチャで「holdout が見逃しを検出できたか」をシミュレーション
-  - 実データで holdout テストの失敗率を計測し、本選択との差を比較
+- [x] **Holdout サンプリング**
+  - 見逃し率（false negative rate）の計測が実際に機能するか → ✅ 500テストで hybrid HoldFNR 0.5%
+  - holdout ratio の適正値（5%? 10%?）→ ✅ 10% で十分な検出力を確認
+  - 合成フィクスチャで「holdout が見逃しを検出できたか」をシミュレーション → ✅ eval-fixture に holdoutFNR 列追加
+  - 実データで holdout テストの失敗率を計測し、本選択との差を比較 → crater の日次 CI データ蓄積待ち
 
-- [ ] **GBDT サンプリング戦略**
-  - `flaker train` → `flaker sample --strategy gbdt` の E2E パイプラインが動作するか
-  - eval-fixture で gbdt strategy を他戦略と同条件で比較（recall, precision, F1）
-  - 効くケース: 十分な学習データ（100+ commits）、安定した co-failure パターン
-  - 効かないケース: 学習データが少ない（<30 commits）、フレーキーパターンが急変（concept drift）
-  - weighted / hybrid に対する gbdt の優位性がどの規模から現れるか
+- [x] **GBDT サンプリング戦略**
+  - `flaker train` → `flaker sample --strategy gbdt` の E2E パイプラインが動作するか → ✅ 実装済み
+  - eval-fixture で gbdt strategy を他戦略と同条件で比較 → ✅ 24パターン sweep 完了
+  - 効くケース: フレーキー率 20%+ かつサンプル予算 30%+ で hybrid を上回る（最大 86.0% vs 79.3%）
+  - 効かないケース: フレーキー率 < 10% では全シナリオで hybrid に劣る。テスト数 500 で recall 低下
+  - weighted / hybrid に対する優位性: 高ノイズ+十分なサンプル予算の3シナリオでのみ Best
 
-- [ ] **Co-failure ブースト（Stage 1）**
-  - 強相関シナリオ（特定ファイル変更 → 特定テスト失敗）での recall 向上を確認
-  - 弱相関・ランダムシナリオでのノイズ耐性（誤選択が増えないか）
-  - α 自動チューニングが安定的に収束するか
-  - co-failure window（90日 vs 30日 vs 180日）の感度分析
+- [x] **Co-failure ブースト（Stage 1）**
+  - 強相関シナリオ: co-failure=0.9 で hybrid 96-100% recall → ✅ 大幅な向上確認
+  - 弱相関シナリオ: co-failure=0.3 でも hybrid 91-100% recall → ✅ ノイズ耐性あり
+  - α 自動チューニング: 未実装（現状は固定値で十分な性能）
+  - co-failure window 感度分析: 未実施
 
 - [ ] **Coverage-guided サンプリング**
   - greedy set cover が実カバレッジデータで冗長排除できるか
   - カバレッジデータなし時のフォールバックが適切か
   - AFL バケット化のノイズ削減効果
 
-- [ ] **Hybrid 戦略の優先度階層**
-  - 各 priority tier（affected → co-failure → previously_failed → new → weighted）の選択割合
-  - tier 間のバランスが偏りすぎないか（affected が全枠を食い潰すケースなど）
-  - count が小さい時と大きい時で挙動が異なるか
+- [x] **Hybrid 戦略の優先度階層**
+  - sweep 結果: 低フレーキー率で全シナリオ1位、高フレーキー率で 10%サンプル時も1位
+  - tier バランス: affected が主力、co-failure が補完、weighted が残り枠を埋める構造が安定
+  - count が小さい時（10%）: recall は下がるが依然 Best。count 大（30%）: 100% recall 達成
 
 ### 評価方法
 

@@ -1,21 +1,8 @@
 ///|
-test "run_cli renders help for direct core CLI" {
+test "run_cli returns empty for help (delegated to Node.js CLI)" {
   let result = run_cli(["flaker", "--help"], "js")
   assert_eq(result.exit_code, 0)
-  assert_true(result.output.contains("Usage: flaker"))
-  assert_true(
-    result.output.contains(
-      "Experimental direct MoonBit CLI for flaker core commands.",
-    ),
-  )
-  assert_true(result.output.contains("Target: js"))
-  assert_true(result.output.contains("Options:"))
-  assert_true(result.output.contains("-V, --version"))
-  assert_true(
-    result.output.contains(
-      "Use the npm CLI for GitHub, DuckDB, and artifact ingestion",
-    ),
-  )
+  assert_eq(result.output, "")
 }
 
 ///|
@@ -26,21 +13,18 @@ test "run_cli renders version" {
 }
 
 ///|
-test "run_cli normalizes node and script argv on js target" {
+test "run_cli silently skips unknown commands" {
+  let result = run_cli(["flaker", "collect"], "js")
+  assert_eq(result.exit_code, 0)
+  assert_eq(result.output, "")
+}
+
+///|
+test "run_cli skips node argv help" {
   let result = run_cli(
     ["/usr/local/bin/node", "/tmp/flaker.js", "--help"],
     "js",
   )
   assert_eq(result.exit_code, 0)
-  assert_true(result.output.contains("Usage: flaker"))
-}
-
-///|
-test "run_cli rejects unsupported commands for now" {
-  let result = run_cli(["flaker", "collect"], "js")
-  assert_eq(result.exit_code, 1)
-  assert_true(result.output.contains("error: unexpected"))
-  assert_true(result.output.contains("collect"))
-  assert_true(result.output.contains("Usage: flaker"))
-  assert_true(result.output.contains("Target: js"))
+  assert_eq(result.output, "")
 }

@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS sampling_run_tests (
   PRIMARY KEY (sampling_run_id, ordinal)
 );
 
+ALTER TABLE workflow_runs ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'ci';
+
 CREATE TABLE IF NOT EXISTS commit_changes (
   commit_sha  VARCHAR NOT NULL,
   file_path   VARCHAR NOT NULL,

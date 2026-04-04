@@ -20,6 +20,8 @@ export interface TrainResult {
   negativeCount: number;
   numTrees: number;
   learningRate: number;
+  ciRows: number;
+  localRows: number;
 }
 
 export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
@@ -28,7 +30,7 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
   const learningRate = opts.learningRate ?? 0.2;
   const windowDays = opts.windowDays ?? 90;
 
-  // Query historical test results with commit context
+  // Query historical test results with commit context and source info
   const rows = await opts.store.raw<{
     test_id: string | null;
     suite: string;
@@ -36,39 +38,63 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
     status: string;
     retry_count: number;
     commit_sha: string;
+    source: string;
   }>(`
     SELECT
-      COALESCE(test_id, '') AS test_id,
-      suite,
-      test_name,
-      status,
-      COALESCE(retry_count, 0)::INTEGER AS retry_count,
-      commit_sha
-    FROM test_results
-    WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '${windowDays} days'
+      COALESCE(tr.test_id, '') AS test_id,
+      tr.suite,
+      tr.test_name,
+      tr.status,
+      COALESCE(tr.retry_count, 0)::INTEGER AS retry_count,
+      tr.commit_sha,
+      COALESCE(wr.source, 'ci') AS source
+    FROM test_results tr
+    LEFT JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
+    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL '${windowDays} days'
   `);
 
-  // Build per-test aggregates
+  // Build per-test aggregates, split by source
+  // CI results: authoritative for long-term flaky rate
+  // Local results: supplementary signal with reduced weight
+  const LOCAL_WEIGHT = 0.5;
   const testAgg = new Map<string, {
     suite: string;
     testName: string;
     runs: number;
     fails: number;
+    ciRuns: number;
+    ciFails: number;
+    localRuns: number;
+    localFails: number;
     totalDurationMs: number;
   }>();
   for (const row of rows) {
     const key = row.test_id || `${row.suite}::${row.test_name}`;
+    const isLocal = row.source === "local";
+    const weight = isLocal ? LOCAL_WEIGHT : 1;
     const agg = testAgg.get(key) ?? {
       suite: row.suite,
       testName: row.test_name,
       runs: 0,
       fails: 0,
+      ciRuns: 0,
+      ciFails: 0,
+      localRuns: 0,
+      localFails: 0,
       totalDurationMs: 0,
     };
-    agg.runs++;
-    if (row.status === "failed" || row.status === "flaky" ||
-        (row.retry_count > 0 && row.status === "passed")) {
-      agg.fails++;
+    agg.runs += weight;
+    if (isLocal) {
+      agg.localRuns++;
+    } else {
+      agg.ciRuns++;
+    }
+    const isFail = row.status === "failed" || row.status === "flaky" ||
+        (row.retry_count > 0 && row.status === "passed");
+    if (isFail) {
+      agg.fails += weight;
+      if (isLocal) agg.localFails++;
+      else agg.ciFails++;
     }
     testAgg.set(key, agg);
   }
@@ -131,6 +157,8 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
   writeFileSync(modelPath, JSON.stringify(modelWithNames, null, 2));
 
   const positiveCount = trainingData.filter((d) => d.label === 1).length;
+  const ciRows = rows.filter((r) => r.source !== "local").length;
+  const localRows = rows.filter((r) => r.source === "local").length;
 
   return {
     modelPath,
@@ -139,18 +167,22 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
     negativeCount: trainingData.length - positiveCount,
     numTrees,
     learningRate,
+    ciRows,
+    localRows,
   };
 }
 
 export function formatTrainResult(result: TrainResult): string {
-  return [
+  const lines = [
     "# GBDT Training Complete",
     "",
     `  Training rows:    ${result.trainingRows}`,
     `  Positive (fail):  ${result.positiveCount}`,
     `  Negative (pass):  ${result.negativeCount}`,
+    `  Source:            ${result.ciRows} CI + ${result.localRows} local (weight 0.5)`,
     `  Trees:            ${result.numTrees}`,
     `  Learning rate:    ${result.learningRate}`,
     `  Model saved to:   ${result.modelPath}`,
-  ].join("\n");
+  ];
+  return lines.join("\n");
 }

@@ -7,6 +7,7 @@ export interface WorkflowRun {
   branch: string | null;
   commitSha: string;
   event: string | null;
+  source?: "ci" | "local";
   status: string | null;
   createdAt: Date;
   durationMs: number | null;

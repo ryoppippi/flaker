@@ -42,7 +42,7 @@ export function parseVitestJson(stdout: string): TestCaseResult[] {
         suite,
         testName,
         status: assertion.status === "passed" ? "passed" : "failed",
-        durationMs: assertion.duration,
+        durationMs: assertion.duration ?? 0,
         retryCount: 0,
         errorMessage: assertion.failureMessages?.length
           ? assertion.failureMessages.join("\n")
@@ -72,18 +72,23 @@ export class VitestRunner implements RunnerAdapter {
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
-    const pattern = tests.map((t) => escapeRegex(t.testName)).join("|");
+    // Run only the suite files that contain selected tests
+    const suiteFiles = [...new Set(tests.map((t) => t.suite))];
     const workerArgs = opts?.workers
       ? ` --pool=threads --poolOptions.threads.maxThreads=${opts.workers}`
       : "";
-    const cmd = `${this.baseCommand} run -t "${pattern}" --reporter json${workerArgs}`;
+    const fileArgs = suiteFiles.join(" ");
+    const cmd = `${this.baseCommand} run ${fileArgs} --reporter json${workerArgs}`;
     const start = Date.now();
     const { exitCode, stdout, stderr } = this.execFn(cmd, opts);
     const durationMs = Date.now() - start;
 
     let results: TestCaseResult[] = [];
     try {
-      results = parseVitestJson(stdout);
+      const all = parseVitestJson(stdout);
+      // Post-filter: only keep tests that were in the selection
+      const selectedNames = new Set(tests.map((t) => t.testName));
+      results = all.filter((r) => selectedNames.has(r.testName));
     } catch {
       // parse failure — return empty results
     }

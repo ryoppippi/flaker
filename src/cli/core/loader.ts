@@ -672,7 +672,13 @@ function wrapMbtCore(mbt: MbtJsExports): MetriciCore {
     ),
     predictGBDT: mbtOrFallback(
       mbt.predict_gbdt_json,
-      (model, features) => mbt.predict_gbdt_json(JSON.stringify(model), JSON.stringify(features)),
+      (model: unknown, features: number[]) => {
+        try {
+          return mbt.predict_gbdt_json(JSON.stringify(model), JSON.stringify(features));
+        } catch {
+          return predictGBDTFallback(model, features);
+        }
+      },
       predictGBDTFallback,
     ),
     generateFixture: mbtOrFallback(

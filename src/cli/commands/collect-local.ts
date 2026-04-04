@@ -93,6 +93,7 @@ export async function runCollectLocal(opts: CollectLocalOpts): Promise<CollectLo
       branch: output.headBranch ?? "local",
       commitSha,
       event: "actrun-local",
+      source: "local",
       status: output.conclusion ?? "completed",
       createdAt: startedAt,
       durationMs,

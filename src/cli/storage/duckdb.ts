@@ -88,8 +88,8 @@ export class DuckDBStore implements MetricStore {
 
   async insertWorkflowRun(run: WorkflowRun): Promise<void> {
     await this.run(
-      `INSERT INTO workflow_runs (id, repo, branch, commit_sha, event, status, created_at, duration_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO workflow_runs (id, repo, branch, commit_sha, event, source, status, created_at, duration_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO NOTHING`,
       [
         run.id,
@@ -97,6 +97,7 @@ export class DuckDBStore implements MetricStore {
         run.branch,
         run.commitSha,
         run.event,
+        run.source ?? "ci",
         run.status,
         run.createdAt,
         run.durationMs,
