@@ -53,9 +53,8 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
     WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(windowDays)} || ' days')
   `);
 
-  // Build per-test aggregates, split by source
-  // CI results: authoritative for long-term flaky rate
-  // Local results: supplementary signal with reduced weight
+  // Single-pass: build per-test aggregates and per-commit test maps
+  // CI results get weight 1.0, local results get reduced weight
   const LOCAL_WEIGHT = 0.5;
   const testAgg = new Map<string, {
     suite: string;
@@ -68,35 +67,31 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
     localFails: number;
     totalDurationMs: number;
   }>();
+  const commitTests = new Map<string, Map<string, boolean>>();
   for (const row of rows) {
     const key = row.test_id || `${row.suite}::${row.test_name}`;
     const isLocal = row.source === "local";
     const weight = isLocal ? LOCAL_WEIGHT : 1;
+    const isFail = row.status === "failed" || row.status === "flaky" ||
+      (row.retry_count > 0 && row.status === "passed");
+
+    // Aggregate
     const agg = testAgg.get(key) ?? {
-      suite: row.suite,
-      testName: row.test_name,
-      runs: 0,
-      fails: 0,
-      ciRuns: 0,
-      ciFails: 0,
-      localRuns: 0,
-      localFails: 0,
-      totalDurationMs: 0,
+      suite: row.suite, testName: row.test_name,
+      runs: 0, fails: 0, ciRuns: 0, ciFails: 0, localRuns: 0, localFails: 0, totalDurationMs: 0,
     };
     agg.runs += weight;
-    if (isLocal) {
-      agg.localRuns++;
-    } else {
-      agg.ciRuns++;
-    }
-    const isFail = row.status === "failed" || row.status === "flaky" ||
-        (row.retry_count > 0 && row.status === "passed");
+    if (isLocal) { agg.localRuns++; } else { agg.ciRuns++; }
     if (isFail) {
       agg.fails += weight;
-      if (isLocal) agg.localFails++;
-      else agg.ciFails++;
+      if (isLocal) agg.localFails++; else agg.ciFails++;
     }
     testAgg.set(key, agg);
+
+    // Commit-test map
+    if (!commitTests.has(row.commit_sha)) commitTests.set(row.commit_sha, new Map());
+    const tests = commitTests.get(row.commit_sha)!;
+    tests.set(key, tests.get(key) || isFail);
   }
 
   // Build co-failure data from commit_changes
@@ -106,19 +101,6 @@ export async function trainModel(opts: TrainOpts): Promise<TrainResult> {
     const key = cf.testId || `${cf.suite}::${cf.testName}`;
     const existing = coFailureMap.get(key) ?? 0;
     coFailureMap.set(key, Math.max(existing, cf.coFailureRate));
-  }
-
-  // Build training rows: each (commit, test) pair
-  const commitTests = new Map<string, Map<string, boolean>>();
-  for (const row of rows) {
-    const key = row.test_id || `${row.suite}::${row.test_name}`;
-    if (!commitTests.has(row.commit_sha)) {
-      commitTests.set(row.commit_sha, new Map());
-    }
-    const tests = commitTests.get(row.commit_sha)!;
-    const failed = row.status === "failed" || row.status === "flaky" ||
-      (row.retry_count > 0 && row.status === "passed");
-    tests.set(key, tests.get(key) || failed);
   }
 
   const trainingData: { features: number[]; label: number }[] = [];

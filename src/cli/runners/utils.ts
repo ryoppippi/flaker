@@ -1,5 +1,34 @@
 import { spawnSync } from "node:child_process";
 
+export type ExecOpts = { cwd?: string; timeout?: number; env?: Record<string, string> };
+
+export type SafeExecFn = (
+  cmd: string,
+  args: string[],
+  opts?: ExecOpts,
+) => CommandResult;
+
+export type SafeExecWithStdinFn = (
+  cmd: string,
+  args: string[],
+  stdin: string,
+  opts?: ExecOpts,
+) => CommandResult;
+
+/** @deprecated Use SafeExecFn */
+export type LegacyExecFn = (cmd: string, opts?: ExecOpts) => CommandResult;
+
+/** Parse "pnpm exec vitest run" into { cmd: "pnpm", args: ["exec", "vitest", "run"] } */
+export function parseBaseCommand(command: string): { cmd: string; args: string[] } {
+  const parts = command.split(/\s+/).filter(Boolean);
+  return { cmd: parts[0], args: parts.slice(1) };
+}
+
+/** Wrap a legacy string-based exec fn into a safe arg-array-based one */
+export function wrapLegacyExec(exec: LegacyExecFn): SafeExecFn {
+  return (cmd, args, opts) => exec(`${cmd} ${args.join(" ")}`, opts);
+}
+
 export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

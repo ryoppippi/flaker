@@ -240,19 +240,30 @@ function addSamplingOptions<T extends Command>(cmd: T): T {
     .option("--model-path <path>", "Path to GBDT model JSON") as T;
 }
 
-/** Merge CLI options with [sampling] config. CLI args take priority. */
+interface ResolvedSamplingOpts {
+  strategy: string;
+  count?: number;
+  percentage?: number;
+  skipQuarantined?: boolean;
+  changed?: string;
+  coFailureDays?: number;
+  holdoutRatio?: number;
+  modelPath?: string;
+}
+
+/** Merge CLI options with [sampling] config and parse to final types. CLI args take priority. */
 function resolveSamplingOpts(
   opts: SamplingCliOpts,
   sampling?: SamplingConfig,
-): SamplingCliOpts {
+): ResolvedSamplingOpts {
   return {
     strategy: opts.strategy ?? sampling?.strategy ?? "weighted",
-    count: opts.count,
-    percentage: opts.percentage ?? (sampling?.percentage != null ? String(sampling.percentage) : undefined),
+    count: parseSampleCount(opts.count),
+    percentage: parseSamplePercentage(opts.percentage) ?? sampling?.percentage,
     skipQuarantined: opts.skipQuarantined ?? sampling?.skip_quarantined,
     changed: opts.changed,
-    coFailureDays: opts.coFailureDays ?? (sampling?.co_failure_days != null ? String(sampling.co_failure_days) : undefined),
-    holdoutRatio: opts.holdoutRatio ?? (sampling?.holdout_ratio != null ? String(sampling.holdout_ratio) : undefined),
+    coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : sampling?.co_failure_days,
+    holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : sampling?.holdout_ratio,
     modelPath: opts.modelPath ?? sampling?.model_path,
   };
 }
@@ -475,16 +486,16 @@ addSamplingOptions(
         const samplePlan = await planSample({
           store,
           mode,
-          count: parseSampleCount(opts.count),
-          percentage: parseSamplePercentage(opts.percentage),
+          count: opts.count,
+          percentage: opts.percentage,
           skipQuarantined: opts.skipQuarantined,
           resolver,
           changedFiles,
           quarantineManifestEntries: manifest?.entries,
           listedTests,
-          coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : undefined,
+          coFailureDays: opts.coFailureDays,
           coFailureAlpha: loadTuningConfigSafe(config.storage.path).alpha,
-          holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : undefined,
+          holdoutRatio: opts.holdoutRatio,
           modelPath: opts.modelPath,
         });
         await recordSamplingRunFromSummary(store, {
@@ -601,15 +612,15 @@ addSamplingOptions(
           store,
           runner: createRunner(config.runner),
           mode,
-          count: parseSampleCount(opts.count),
-          percentage: parseSamplePercentage(opts.percentage),
+          count: opts.count,
+          percentage: opts.percentage,
           resolver,
           changedFiles,
           skipQuarantined: opts.skipQuarantined,
           quarantineManifestEntries: manifest?.entries,
           cwd,
-          coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : undefined,
-          holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : undefined,
+          coFailureDays: opts.coFailureDays,
+          holdoutRatio: opts.holdoutRatio,
         });
         console.log(formatSamplingSummary(runResult.samplingSummary, {
           ciPassWhenLocalPassRate: kpi.passSignal.rate,

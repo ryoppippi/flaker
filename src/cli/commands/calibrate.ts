@@ -115,13 +115,9 @@ export function recommendSampling(profile: ProjectProfile): SamplingConfig {
   // Strategy selection based on sweep results
   let strategy: string;
   if (profile.testCount < 50) {
-    // Too few tests to benefit from smart sampling
     strategy = "random";
-  } else if (profile.hasResolver && profile.flakyRate < 0.10) {
-    // Low flaky → hybrid dominates across all sweep scenarios
-    strategy = "hybrid";
   } else if (profile.hasResolver && profile.flakyRate < 0.20) {
-    // Medium flaky → hybrid still generally best, gbdt competitive at high sample%
+    // Low-to-medium flaky + resolver → hybrid dominates in sweep benchmarks
     strategy = "hybrid";
   } else if (profile.hasGBDTModel && profile.commitCount >= 100 && profile.flakyRate >= 0.15) {
     // High flaky + sufficient training data → GBDT can outperform hybrid

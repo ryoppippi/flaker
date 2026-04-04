@@ -6,19 +6,13 @@ import type {
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
-import { runCommandSafe } from "./utils.js";
-import type { CommandResult } from "./utils.js";
-
-export type ExecFn = (
-  cmd: string,
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
-
-export type SafeExecFn = (
-  cmd: string,
-  args: string[],
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
+import {
+  runCommandSafe,
+  parseBaseCommand,
+  wrapLegacyExec,
+  type SafeExecFn,
+  type LegacyExecFn,
+} from "./utils.js";
 
 export function parseMoonTestOutput(stdout: string): TestCaseResult[] {
   const results: TestCaseResult[] = [];
@@ -27,17 +21,10 @@ export function parseMoonTestOutput(stdout: string): TestCaseResult[] {
   while ((match = regex.exec(stdout)) !== null) {
     const fullName = match[1];
     const status = match[2] === "ok" ? "passed" : "failed";
-    // Split "pkg/module/test_name" into suite and testName
     const lastSlash = fullName.lastIndexOf("/");
     const suite = lastSlash >= 0 ? fullName.substring(0, lastSlash) : "";
     const testName = lastSlash >= 0 ? fullName.substring(lastSlash + 1) : fullName;
-    results.push({
-      suite,
-      testName,
-      status,
-      durationMs: 0,
-      retryCount: 0,
-    });
+    results.push({ suite, testName, status, durationMs: 0, retryCount: 0 });
   }
   return results;
 }
@@ -56,26 +43,15 @@ export function parseMoonTestList(stdout: string): TestId[] {
   return ids;
 }
 
-function parseBaseCommand(command: string): { cmd: string; args: string[] } {
-  const parts = command.split(/\s+/).filter(Boolean);
-  return { cmd: parts[0], args: parts.slice(1) };
-}
-
 export class MoonTestRunner implements RunnerAdapter {
   name = "moontest";
   capabilities: RunnerCapabilities = { nativeParallel: false, maxBatchSize: 50 };
   private baseCommand: string;
   private safeExecFn: SafeExecFn;
 
-  constructor(opts?: { command?: string; exec?: ExecFn; safeExec?: SafeExecFn }) {
+  constructor(opts?: { command?: string; exec?: LegacyExecFn; safeExec?: SafeExecFn }) {
     this.baseCommand = opts?.command ?? "moon test";
-    if (opts?.safeExec) {
-      this.safeExecFn = opts.safeExec;
-    } else if (opts?.exec) {
-      this.safeExecFn = (cmd, args, o) => opts.exec!(`${cmd} ${args.join(" ")}`, o);
-    } else {
-      this.safeExecFn = runCommandSafe;
-    }
+    this.safeExecFn = opts?.safeExec ?? (opts?.exec ? wrapLegacyExec(opts.exec) : runCommandSafe);
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
@@ -85,9 +61,7 @@ export class MoonTestRunner implements RunnerAdapter {
     const start = Date.now();
     const { exitCode, stdout, stderr } = this.safeExecFn(cmd, runArgs, opts);
     const durationMs = Date.now() - start;
-
-    const results = parseMoonTestOutput(stdout);
-    return { exitCode, results, durationMs, stdout, stderr };
+    return { exitCode, results: parseMoonTestOutput(stdout), durationMs, stdout, stderr };
   }
 
   async listTests(opts?: ExecuteOpts): Promise<TestId[]> {

@@ -7,19 +7,14 @@ import type {
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
-import { escapeRegex, runCommandSafe } from "./utils.js";
-import type { CommandResult } from "./utils.js";
-
-export type ExecFn = (
-  cmd: string,
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
-
-export type SafeExecFn = (
-  cmd: string,
-  args: string[],
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
+import {
+  escapeRegex,
+  runCommandSafe,
+  parseBaseCommand,
+  wrapLegacyExec,
+  type SafeExecFn,
+  type LegacyExecFn,
+} from "./utils.js";
 
 interface PlaywrightListSpec {
   title: string;
@@ -70,27 +65,15 @@ export function parsePlaywrightList(stdout: string): TestId[] {
   return ids;
 }
 
-/** Parse a command string like "pnpm exec playwright test" into [cmd, ...args] */
-function parseBaseCommand(command: string): { cmd: string; args: string[] } {
-  const parts = command.split(/\s+/).filter(Boolean);
-  return { cmd: parts[0], args: parts.slice(1) };
-}
-
 export class PlaywrightRunner implements RunnerAdapter {
   name = "playwright";
   capabilities: RunnerCapabilities = { nativeParallel: true };
   private baseCommand: string;
   private safeExecFn: SafeExecFn;
 
-  constructor(opts?: { command?: string; exec?: ExecFn; safeExec?: SafeExecFn }) {
+  constructor(opts?: { command?: string; exec?: LegacyExecFn; safeExec?: SafeExecFn }) {
     this.baseCommand = opts?.command ?? "pnpm exec playwright test";
-    if (opts?.safeExec) {
-      this.safeExecFn = opts.safeExec;
-    } else if (opts?.exec) {
-      this.safeExecFn = (cmd, args, o) => opts.exec!(`${cmd} ${args.join(" ")}`, o);
-    } else {
-      this.safeExecFn = runCommandSafe;
-    }
+    this.safeExecFn = opts?.safeExec ?? (opts?.exec ? wrapLegacyExec(opts.exec) : runCommandSafe);
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {

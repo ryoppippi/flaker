@@ -73,32 +73,31 @@ export async function runInsights(opts: InsightsOpts): Promise<InsightsResult> {
     localFlakyRate: r.local_runs > 0 ? Math.round((r.local_fails / r.local_runs) * 1000) / 10 : 0,
   }));
 
-  const localOnly = stats
-    .filter((s) => s.localFails > 0 && s.ciFails === 0)
-    .sort((a, b) => b.localFlakyRate - a.localFlakyRate)
-    .slice(0, top);
+  // Single-pass classification
+  const localOnlyAll: TestSourceStats[] = [];
+  const ciOnlyAll: TestSourceStats[] = [];
+  const bothAll: TestSourceStats[] = [];
+  let stableCount = 0;
+  for (const s of stats) {
+    if (s.ciFails > 0 && s.localFails > 0) bothAll.push(s);
+    else if (s.ciFails > 0) ciOnlyAll.push(s);
+    else if (s.localFails > 0) localOnlyAll.push(s);
+    else stableCount++;
+  }
 
-  const ciOnly = stats
-    .filter((s) => s.ciFails > 0 && s.localFails === 0)
-    .sort((a, b) => b.ciFlakyRate - a.ciFlakyRate)
-    .slice(0, top);
-
-  const both = stats
-    .filter((s) => s.ciFails > 0 && s.localFails > 0)
-    .sort((a, b) => (b.ciFlakyRate + b.localFlakyRate) - (a.ciFlakyRate + a.localFlakyRate))
-    .slice(0, top);
-
-  const stableCount = stats.filter((s) => s.ciFails === 0 && s.localFails === 0).length;
+  localOnlyAll.sort((a, b) => b.localFlakyRate - a.localFlakyRate);
+  ciOnlyAll.sort((a, b) => b.ciFlakyRate - a.ciFlakyRate);
+  bothAll.sort((a, b) => (b.ciFlakyRate + b.localFlakyRate) - (a.ciFlakyRate + a.localFlakyRate));
 
   return {
-    localOnly,
-    ciOnly,
-    both,
+    localOnly: localOnlyAll.slice(0, top),
+    ciOnly: ciOnlyAll.slice(0, top),
+    both: bothAll.slice(0, top),
     summary: {
       totalTests: stats.length,
-      ciOnlyCount: stats.filter((s) => s.ciFails > 0 && s.localFails === 0).length,
-      localOnlyCount: stats.filter((s) => s.localFails > 0 && s.ciFails === 0).length,
-      bothCount: stats.filter((s) => s.ciFails > 0 && s.localFails > 0).length,
+      ciOnlyCount: ciOnlyAll.length,
+      localOnlyCount: localOnlyAll.length,
+      bothCount: bothAll.length,
       stableCount,
     },
   };

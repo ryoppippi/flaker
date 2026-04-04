@@ -6,19 +6,13 @@ import type {
   ExecuteOpts,
   ExecuteResult,
 } from "./types.js";
-import { runCommandSafe } from "./utils.js";
-import type { CommandResult } from "./utils.js";
-
-export type ExecFn = (
-  cmd: string,
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
-
-export type SafeExecFn = (
-  cmd: string,
-  args: string[],
-  opts?: { cwd?: string; timeout?: number; env?: Record<string, string> },
-) => CommandResult;
+import {
+  runCommandSafe,
+  parseBaseCommand,
+  wrapLegacyExec,
+  type SafeExecFn,
+  type LegacyExecFn,
+} from "./utils.js";
 
 interface VitestAssertionResult {
   fullName: string;
@@ -60,16 +54,8 @@ export function parseVitestJson(stdout: string): TestCaseResult[] {
 }
 
 export function parseVitestList(stdout: string): TestId[] {
-  // vitest --list --reporter json outputs an array of file paths
-  // We return them as TestIds with the file as suite
   const files: string[] = JSON.parse(stdout);
   return files.map((f) => ({ suite: f, testName: f }));
-}
-
-/** Parse a command string like "pnpm exec vitest run" into [cmd, ...args] */
-function parseBaseCommand(command: string): { cmd: string; args: string[] } {
-  const parts = command.split(/\s+/).filter(Boolean);
-  return { cmd: parts[0], args: parts.slice(1) };
 }
 
 export class VitestRunner implements RunnerAdapter {
@@ -78,17 +64,9 @@ export class VitestRunner implements RunnerAdapter {
   private baseCommand: string;
   private safeExecFn: SafeExecFn;
 
-  constructor(opts?: { command?: string; exec?: ExecFn; safeExec?: SafeExecFn }) {
+  constructor(opts?: { command?: string; exec?: LegacyExecFn; safeExec?: SafeExecFn }) {
     this.baseCommand = opts?.command ?? "pnpm vitest";
-    // Support both legacy ExecFn (for tests) and safe exec
-    if (opts?.safeExec) {
-      this.safeExecFn = opts.safeExec;
-    } else if (opts?.exec) {
-      // Wrap legacy exec for backward compatibility
-      this.safeExecFn = (cmd, args, o) => opts.exec!(`${cmd} ${args.join(" ")}`, o);
-    } else {
-      this.safeExecFn = runCommandSafe;
-    }
+    this.safeExecFn = opts?.safeExec ?? (opts?.exec ? wrapLegacyExec(opts.exec) : runCommandSafe);
   }
 
   async execute(tests: TestId[], opts?: ExecuteOpts): Promise<ExecuteResult> {
