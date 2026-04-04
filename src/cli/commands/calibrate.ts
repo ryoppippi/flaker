@@ -25,7 +25,7 @@ export async function analyzeProject(
   const window = opts.windowDays ?? 90;
 
   // Count distinct tests (CI only for authoritative count)
-  const testCountRows = await store.raw(`
+  const testCountRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT tr.suite || '::' || tr.test_name) AS cnt
     FROM test_results tr
     JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
@@ -35,7 +35,7 @@ export async function analyzeProject(
   const testCount = Number(testCountRows[0]?.cnt ?? 0);
 
   // Compute overall flaky rate from CI results only
-  const flakyRows = await store.raw(`
+  const flakyRows = await store.raw<{ flaky_count: number; total_count: number }>(`
     SELECT
       COUNT(DISTINCT CASE WHEN fail_count > 0 THEN key END) AS flaky_count,
       COUNT(DISTINCT key) AS total_count
@@ -58,11 +58,11 @@ export async function analyzeProject(
   // Use commit_changes if available, otherwise estimate from test failure clustering
   let coFailureStrength = 0.5; // default mid estimate
   try {
-    const coRows = await store.raw(`
+    const coRows = await store.raw<{ cnt: number }>(`
       SELECT COUNT(*) AS cnt FROM commit_changes LIMIT 1
     `);
     if (Number(coRows[0]?.cnt ?? 0) > 0) {
-      const corrRows = await store.raw(`
+      const corrRows = await store.raw<{ avg_co_fail: number }>(`
         SELECT
           COALESCE(AVG(co_fail_rate), 0) AS avg_co_fail
         FROM (
@@ -88,7 +88,7 @@ export async function analyzeProject(
   }
 
   // Count commits with test data
-  const commitRows = await store.raw(`
+  const commitRows = await store.raw<{ cnt: number }>(`
     SELECT COUNT(DISTINCT commit_sha) AS cnt
     FROM test_results
     WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '${window} days'
