@@ -567,12 +567,13 @@ export async function runEval(opts: { store: MetricStore; windowDays?: number })
       COALESCE((SELECT ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT suite || '::' || test_name), 0), 1)::DOUBLE FROM test_results), 0) AS avg_runs
   `);
 
-  // 2. Detection
-  const flakyTests = await store.queryFlakyTests({ windowDays });
+  // 2. Detection (filter to >= 5 runs, consistent with kpi/calibrate)
+  const allFlakyTests = await store.queryFlakyTests({ windowDays });
+  const flakyTests = allFlakyTests.filter((t) => t.totalRuns >= 5);
   const trueFlakyTests = await store.queryTrueFlakyTests();
   const quarantined = await store.queryQuarantined();
 
-  // Distribution
+  // Distribution (only tests with >= 5 runs)
   const distribution = [
     { range: "0-10%", count: 0 },
     { range: "10-30%", count: 0 },
@@ -715,8 +716,8 @@ function formatEvalTextReport(report: EvalReport): string {
   if (brokenCount > 0) {
     lines.push(`  Broken tests:     ${brokenCount} (100% fail — fix or quarantine)`);
   }
-  lines.push(`  Flaky tests:      ${intermittentCount} (intermittent failures)`);
-  lines.push(`  True flaky:       ${det.trueFlakyTests}`);
+  lines.push(`  Flaky tests:      ${intermittentCount} (intermittent, >= 5 runs)`);
+  lines.push(`  Retry flaky:      ${det.trueFlakyTests} (pass+fail within same commit)`);
   lines.push(`  Quarantined:      ${det.quarantinedTests}`);
   lines.push(`  Distribution:`);
   for (const b of det.distribution) {
@@ -784,6 +785,7 @@ function formatEvalMarkdownReport(
     `| Health score | ${report.healthScore}/100 (${healthScoreLabel(report.healthScore)}) |`,
     `| Broken tests (100% fail) | ${det.flakyTestDetails?.filter((t) => t.flakyRate >= 100 && t.totalRuns >= 5).length ?? 0} |`,
     `| Flaky tests (intermittent) | ${det.flakyTests - (det.flakyTestDetails?.filter((t) => t.flakyRate >= 100 && t.totalRuns >= 5).length ?? 0)} |`,
+    `| Retry flaky (pass+fail in same commit) | ${det.trueFlakyTests} |`,
     `| Matched commits | ${kpi.matchedCommits} |`,
     `| Avg sample ratio | ${kpi.avgSampleRatio != null ? `${kpi.avgSampleRatio}% of CI` : "N/A"} |`,
     `| Avg saved minutes | ${kpi.avgSavedMinutes != null ? `${kpi.avgSavedMinutes} min` : "N/A"} |`,
@@ -819,7 +821,7 @@ function formatEvalMarkdownReport(
     "",
     "| Metric | Value |",
     "| --- | --- |",
-    `| True flaky tests | ${det.trueFlakyTests} |`,
+    `| Retry flaky tests | ${det.trueFlakyTests} |`,
     `| Quarantined tests | ${det.quarantinedTests} |`,
     `| Resolved flaky | ${res.resolvedFlaky} |`,
     `| New flaky | ${res.newFlaky} |`,

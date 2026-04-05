@@ -84,7 +84,7 @@ export async function runTrueFlaky(opts: { store: MetricStore; top?: number }): 
 }
 
 export function formatTrueFlakyTable(results: TrueFlakyScore[]): string {
-  if (results.length === 0) return "No true flaky tests found.";
+  if (results.length === 0) return "No retry-flaky tests found (pass+fail within same commit).";
   const lines = results.map((r) =>
     `${r.suite} > ${r.testName}  ${r.trueFlakyRate.toFixed(1)}%  (${r.flakyCommits}/${r.commitsTested} commits)`
   );
