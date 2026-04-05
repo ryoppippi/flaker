@@ -1480,7 +1480,7 @@ program
     const store = new DuckDBStore(resolve(config.storage.path));
     await store.initialize();
     try {
-      const { analyzeProject, recommendSampling, formatCalibrationReport, buildExplainContext } = await import("./commands/calibrate.js");
+      const { analyzeProject, recommendSampling, formatCalibrationReport, buildExplainContext, queryTopTests } = await import("./commands/calibrate.js");
 
       const hasResolver = config.affected.resolver !== "" && config.affected.resolver !== "none";
       const modelPath = resolve(".flaker", "models", "gbdt.json");
@@ -1495,7 +1495,8 @@ program
       const result = { profile, sampling };
 
       if (opts.explain) {
-        console.log(JSON.stringify(buildExplainContext(result), null, 2));
+        const topTests = await queryTopTests(store, parseInt(opts.windowDays, 10));
+        console.log(JSON.stringify(buildExplainContext(result, topTests), null, 2));
         return;
       }
 

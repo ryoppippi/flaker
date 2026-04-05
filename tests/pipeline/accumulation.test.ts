@@ -232,8 +232,9 @@ describe("data accumulation pipeline", () => {
 
     // calibrate should use CI data only
     const profile = await analyzeProject(store, { hasResolver: false, hasGBDTModel: false });
-    // CI: 3 tests, flaky-ci has 1 fail → flakyRate = 1/3
-    expect(profile.flakyRate).toBeCloseTo(0.333, 1);
+    // CI: only 2 runs per test, below classification threshold (5)
+    // flakyRate is 0 because no test has >= 5 runs
+    expect(profile.flakyRate).toBe(0);
 
     // insights should show divergence
     const insights = await runInsights({ store });

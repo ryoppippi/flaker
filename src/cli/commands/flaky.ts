@@ -36,17 +36,38 @@ export function formatFlakyTable(results: FlakyScore[]): string {
     return "No flaky tests found.";
   }
 
-  const headers = ["Suite", "Test Name", "Flaky Rate", "Total Runs", "Fail Count", "Last Flaky At"];
-  const rows = results.map((r) => [
-    r.suite,
-    r.testName,
-    `${r.flakyRate}%`,
-    String(r.totalRuns),
-    String(r.failCount),
-    r.lastFlakyAt ? r.lastFlakyAt.toISOString() : "N/A",
-  ]);
+  const broken = results.filter((r) => r.flakyRate >= 100 && r.totalRuns >= 2);
+  const flaky = results.filter((r) => r.flakyRate < 100 || r.totalRuns < 2);
 
-  return formatTable(headers, rows);
+  const lines: string[] = [];
+  if (broken.length > 0) {
+    lines.push(`Broken (100% fail — not flaky, fix or quarantine):`);
+    const headers = ["Suite", "Test Name", "Total Runs", "Fail Count"];
+    const rows = broken.map((r) => [
+      r.suite,
+      r.testName,
+      String(r.totalRuns),
+      String(r.failCount),
+    ]);
+    lines.push(formatTable(headers, rows));
+    lines.push("");
+  }
+  if (flaky.length > 0) {
+    lines.push(`Flaky (intermittent failures):`);
+    const headers = ["Suite", "Test Name", "Flaky Rate", "Total Runs", "Fail Count"];
+    const rows = flaky.map((r) => [
+      r.suite,
+      r.testName,
+      `${r.flakyRate}%`,
+      String(r.totalRuns),
+      String(r.failCount),
+    ]);
+    lines.push(formatTable(headers, rows));
+  }
+  if (lines.length === 0) {
+    return "No flaky tests found.";
+  }
+  return lines.join("\n");
 }
 
 export async function runFlakyTrend(opts: { store: MetricStore; suite: string; testName: string }): Promise<TrendEntry[]> {

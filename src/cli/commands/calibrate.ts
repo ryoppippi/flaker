@@ -65,7 +65,7 @@ export async function analyzeProject(
       WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
         AND COALESCE(wr.source, 'ci') = 'ci'
       GROUP BY tr.suite, tr.test_name
-      HAVING COUNT(*) >= 2
+      HAVING COUNT(*) >= 5
     ) sub
   `);
   const brokenTestCount = Number(classRows[0]?.broken_count ?? 0);
@@ -103,7 +103,7 @@ export async function analyzeProject(
           HAVING co_runs >= 3 AND co_fails > 0
         ) sub
       `);
-      coFailureStrength = Math.min(1, Number(corrRows[0]?.avg_co_fail ?? 0.5));
+      coFailureStrength = Math.min(1, Number(corrRows[0]?.avg_co_fail ?? 0));
     }
   } catch {
     // commit_changes table may not exist
@@ -261,13 +261,17 @@ function strategyExplanation(strategy: string): string {
 /**
  * Generate a JSON context blob for LLM-assisted calibration.
  */
-export function buildExplainContext(result: CalibrationResult): Record<string, unknown> {
+export function buildExplainContext(
+  result: CalibrationResult,
+  topTests?: { broken: string[]; flaky: string[] },
+): Record<string, unknown> {
   const { profile: p, sampling: s } = result;
   return {
     project: {
       testCount: p.testCount,
       commitCount: p.commitCount,
       confidence: p.confidence,
+      confidenceThresholds: { insufficient: "<5", low: "<30", moderate: "<100", high: "100+" },
       brokenTests: p.brokenTestCount,
       intermittentFlakyTests: p.intermittentFlakyCount,
       trueFlakyRate: p.trueFlakyRate,
@@ -279,10 +283,12 @@ export function buildExplainContext(result: CalibrationResult): Record<string, u
     },
     recommendation: {
       strategy: s.strategy,
+      strategyReason: strategyExplanation(s.strategy),
       percentage: s.percentage,
       holdoutRatio: s.holdout_ratio,
       coFailureDays: s.co_failure_days,
     },
+    topTests: topTests ?? { broken: [], flaky: [] },
     warnings: [
       ...(p.confidence === "insufficient" ? ["Insufficient data (< 5 commits). Recommendations are unreliable."] : []),
       ...(p.confidence === "low" ? [`Low confidence (${p.commitCount} commits). Need 50+ for reliable calibration.`] : []),
@@ -290,4 +296,34 @@ export function buildExplainContext(result: CalibrationResult): Record<string, u
       ...(!p.hasCoFailureData ? ["No co-failure data collected. Co-failure strength is a default estimate."] : []),
     ],
   };
+}
+
+/**
+ * Query top broken and flaky test names for --explain context.
+ */
+export async function queryTopTests(
+  store: MetricStore,
+  windowDays: number,
+): Promise<{ broken: string[]; flaky: string[] }> {
+  const window = Number(windowDays);
+  const rows = await store.raw<{ key: string; fail_rate: number }>(`
+    SELECT
+      tr.suite || ' > ' || tr.test_name AS key,
+      ROUND(COUNT(*) FILTER (WHERE tr.status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 1) AS fail_rate
+    FROM test_results tr
+    JOIN workflow_runs wr ON tr.workflow_run_id = wr.id
+    WHERE tr.created_at > CURRENT_TIMESTAMP - INTERVAL (${window} || ' days')
+      AND COALESCE(wr.source, 'ci') = 'ci'
+    GROUP BY tr.suite, tr.test_name
+    HAVING COUNT(*) >= 5 AND fail_rate > 0
+    ORDER BY fail_rate DESC
+    LIMIT 20
+  `);
+  const broken: string[] = [];
+  const flaky: string[] = [];
+  for (const r of rows) {
+    if (r.fail_rate >= 100) broken.push(r.key);
+    else flaky.push(r.key);
+  }
+  return { broken: broken.slice(0, 10), flaky: flaky.slice(0, 10) };
 }
