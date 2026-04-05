@@ -1,6 +1,6 @@
 # Runner Adapters
 
-metrici はテストランナーごとの違いを吸収する Runner Adapter を提供します。テストケースの個別実行、一覧取得、結果パースを統一的に扱えます。
+flaker はテストランナーごとの違いを吸収する Runner Adapter を提供します。テストケースの個別実行、一覧取得、結果パースを統一的に扱えます。
 
 ## 組み込みアダプタ
 
@@ -64,7 +64,7 @@ list = "node ./my-runner.js list"
 
 #### `execute` コマンド
 
-metrici が stdin に JSON を送り、stdout から JSON を受け取ります。
+flaker が stdin に JSON を送り、stdout から JSON を受け取ります。
 
 **stdin:**
 
@@ -277,7 +277,7 @@ interface TestId {
 
 ## 実行モデル: バッチとオーケストレーション
 
-テスト数が多い場合、metrici のオーケストレーターがランナーの特性に応じて実行を最適化します。
+テスト数が多い場合、flaker のオーケストレーターがランナーの特性に応じて実行を最適化します。
 
 ### Runner Capabilities
 
@@ -285,34 +285,34 @@ interface TestId {
 
 | ランナー | `nativeParallel` | `maxBatchSize` | 動作 |
 |---------|-----------------|---------------|------|
-| Vitest | `true` | - | metrici は全テストを 1 回の execute で渡す。vitest が `--pool=threads` で内部並列化 |
-| Playwright | `true` | - | metrici は全テストを 1 回の execute で渡す。playwright が `--workers` で内部並列化 |
-| MoonBit | `false` | 50 | metrici が 50 件ずつバッチ分割して実行 |
-| Custom | `false` | - | metrici がバッチ分割して実行 |
+| Vitest | `true` | - | flaker は全テストを 1 回の execute で渡す。vitest が `--pool=threads` で内部並列化 |
+| Playwright | `true` | - | flaker は全テストを 1 回の execute で渡す。playwright が `--workers` で内部並列化 |
+| MoonBit | `false` | 50 | flaker が 50 件ずつバッチ分割して実行 |
+| Custom | `false` | - | flaker がバッチ分割して実行 |
 
 ### 実行オプション
 
 ```bash
 # Vitest: 4 workers で並列実行（ランナー内部の並列化）
-metrici run --strategy hybrid --count 100 --workers 4
+flaker run --strategy hybrid --count 100 --workers 4
 
-# MoonBit: 50件ずつ 2 並列でバッチ実行（metrici がシャード）
-metrici run --strategy random --count 200 --concurrency 2
+# MoonBit: 50件ずつ 2 並列でバッチ実行（flaker がシャード）
+flaker run --strategy random --count 200 --concurrency 2
 
 # バッチサイズを明示的に指定
-metrici run --strategy weighted --count 100 --batch-size 25 --concurrency 4
+flaker run --strategy weighted --count 100 --batch-size 25 --concurrency 4
 ```
 
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--workers N` | ランナー内部の並列ワーカー数（`nativeParallel: true` のランナーに渡される） | ランナーのデフォルト |
-| `--concurrency N` | metrici がバッチを並列実行する数 | 1（シーケンシャル） |
+| `--concurrency N` | flaker がバッチを並列実行する数 | 1（シーケンシャル） |
 | `--batch-size N` | 1 回の execute に渡すテスト数の上限 | ランナーの `maxBatchSize` または全件 |
 
 ### 動作フロー
 
 ```
-metrici run --count 100 --concurrency 2 --batch-size 30
+flaker run --count 100 --concurrency 2 --batch-size 30
 
 nativeParallel = true の場合:
   → execute(100 tests, { workers })      ※1回で全部渡す
@@ -330,10 +330,10 @@ nativeParallel = false, maxBatchSize = 30 の場合:
 
 ### crater (Playwright + BiDi) での注意
 
-crater の Playwright テストは BiDi サーバーを共有するため `workers: 1` が必須です。metrici 側でのシャーディング（`--concurrency`）も使えません:
+crater の Playwright テストは BiDi サーバーを共有するため `workers: 1` が必須です。flaker 側でのシャーディング（`--concurrency`）も使えません:
 
 ```toml
-# crater の metrici.toml
+# crater の flaker.toml
 [runner]
 type = "playwright"
 command = "pnpm exec playwright test"
@@ -353,18 +353,18 @@ native_parallel = true      # ランナーが内部で並列化する場合
 max_batch_size = 100         # 1回の execute の上限
 ```
 
-## metrici との統合フロー
+## flaker との統合フロー
 
 ```
-metrici sample --strategy hybrid --count 20
+flaker sample --strategy hybrid --count 20
   → TestId[] を出力
 
-metrici run --strategy hybrid --count 20
+flaker run --strategy hybrid --count 20
   → sample で TestId[] を選択
   → orchestrate(runner, TestId[], opts) で実行戦略を決定
   → RunnerAdapter.execute() を適切にバッチ/並列実行
   → ExecuteResult.results を DB に自動格納
-  → metrici eval で健全性評価
+  → flaker eval で健全性評価
 ```
 
-Runner Adapter の結果は自動的に metrici の DuckDB に格納されるため、実行するたびにデータが蓄積され、flaky 検出・トレンド分析・bisect の精度が向上します。
+Runner Adapter の結果は自動的に flaker の DuckDB に格納されるため、実行するたびにデータが蓄積され、flaky 検出・トレンド分析・bisect の精度が向上します。
