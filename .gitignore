@@ -8,6 +8,6 @@ _build
 .mooncakes
 .pnpm-store
 .npm-cache
-dist/flaker-native
+dist/flaker
 result
 .direnv

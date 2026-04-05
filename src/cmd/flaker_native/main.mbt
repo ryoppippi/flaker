@@ -17,7 +17,7 @@ async fn main {
 
 ///|
 fn print_help() -> Unit {
-  println("flaker-native — MoonBit native CLI for flaker")
+  println("flaker — intelligent test selection toolkit")
   println("")
   println("Commands:")
   println("  run [--strategy <s>]         Sample and run tests (default command)")

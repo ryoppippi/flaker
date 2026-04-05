@@ -7,7 +7,7 @@ async fn cmd_run(args : Array[String]) -> Unit {
     _ => {
       println("No flaker.toml found. Run setup first:")
       println("")
-      println("  flaker_native calibrate")
+      println("  flaker calibrate")
       println("")
       println("This analyzes your project and recommends sampling config.")
       return
@@ -26,7 +26,7 @@ async fn cmd_run(args : Array[String]) -> Unit {
     println("No test data yet. Collect CI results first:")
     println("")
     println("  export GITHUB_TOKEN=ghp_...")
-    println("  flaker_native collect")
+    println("  flaker collect")
     println("")
     println("This fetches test results from GitHub Actions.")
     close_db(db)

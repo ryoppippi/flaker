@@ -58,7 +58,7 @@ stdenv.mkDerivation {
     fi
 
     # Step 2: Link with explicit library paths
-    cc -O2 -o flaker-native \
+    cc -O2 -o flaker \
       -I"$MOON_HOME/include" \
       "$MOON_HOME/lib/libmoonbitrun.o" \
       "$BINARY.c" \
@@ -83,14 +83,14 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     mkdir -p $out/bin
-    install -Dm755 flaker-native $out/bin/flaker_native
+    install -Dm755 flaker $out/bin/flaker
     runHook postInstall
   '';
 
   meta = {
     description = "Intelligent test selection toolkit";
     homepage = "https://github.com/mizchi/flaker";
-    mainProgram = "flaker_native";
+    mainProgram = "flaker";
     platforms = [
       "x86_64-linux"
       "aarch64-linux"

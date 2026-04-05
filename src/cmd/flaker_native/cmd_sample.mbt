@@ -19,7 +19,7 @@ async fn cmd_sample(args : Array[String]) -> Unit {
 
   let meta = build_test_meta(db)
   if meta.length() == 0 {
-    println("No test data. Run 'flaker_native collect' first.")
+    println("No test data. Run 'flaker collect' first.")
     close_db(db)
     return
   }

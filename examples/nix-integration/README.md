@@ -26,20 +26,20 @@ name = "your-repo"
 
 ```bash
 export GITHUB_TOKEN="ghp_..."
-flaker_native collect
+flaker collect
 ```
 
 ### 3. Analyze
 
 ```bash
 # Project calibration
-flaker_native calibrate
+flaker calibrate
 
 # Flaky test rankings
-flaker_native flaky --top 10
+flaker flaky --top 10
 
 # Sample tests for selective execution
-flaker_native sample --strategy hybrid --percentage 30
+flaker sample --strategy hybrid --percentage 30
 ```
 
 ## Using as overlay

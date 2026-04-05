@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build flaker-native binary.
+# Build flaker binary.
 # Requires: brew install duckdb
 set -e
 
@@ -19,7 +19,7 @@ fi
 
 # Step 2: Link
 echo "Linking..."
-cc -O2 -o dist/flaker-native \
+cc -O2 -o dist/flaker \
   -I"$HOME/.moon/include" \
   "$HOME/.moon/lib/libmoonbitrun.o" \
   "${BINARY}.c" \
@@ -40,7 +40,7 @@ cc -O2 -o dist/flaker-native \
 
 mkdir -p dist
 echo ""
-ls -lh dist/flaker-native
-file dist/flaker-native
+ls -lh dist/flaker
+file dist/flaker
 echo ""
-echo "Run: dist/flaker-native --help"
+echo "Run: dist/flaker --help"

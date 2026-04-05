@@ -58,11 +58,11 @@
           apps = {
             default = {
               type = "app";
-              program = "${flaker}/bin/flaker_native";
+              program = "${flaker}/bin/flaker";
             };
             flaker = {
               type = "app";
-              program = "${flaker}/bin/flaker_native";
+              program = "${flaker}/bin/flaker";
             };
           };
 

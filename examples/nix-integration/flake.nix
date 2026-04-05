@@ -22,19 +22,19 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          flaker-native = flaker.packages.${system}.default;
+          flaker-bin = flaker.packages.${system}.default;
         in
         {
           default = pkgs.mkShellNoCC {
             packages = [
-              flaker-native
+              flaker-bin
               pkgs.git
               pkgs.nodejs
               pkgs.pnpm
             ];
 
             shellHook = ''
-              echo "flaker available: $(flaker_native --help 2>&1 | head -1)"
+              echo "flaker available: $(flaker --help 2>&1 | head -1)"
             '';
           };
         }
