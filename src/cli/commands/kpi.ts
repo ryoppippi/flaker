@@ -40,6 +40,10 @@ export interface FlakerKpi {
     coFailureCoverage: number;
     coFailureReady: boolean;
     confidence: "insufficient" | "low" | "moderate" | "high";
+    /** ISO date of most recent test result */
+    lastDataAt: string | null;
+    /** Days since last data */
+    staleDays: number | null;
   };
 }
 
@@ -217,6 +221,7 @@ export async function computeKpi(
   const [dataRow] = await store.raw<{
     commit_count: number;
     commits_with_changes: number;
+    last_data_at: string | null;
   }>(`
     SELECT
       (SELECT COUNT(DISTINCT commit_sha)::INTEGER FROM test_results
@@ -226,7 +231,8 @@ export async function computeKpi(
        WHERE commit_sha IN (
          SELECT DISTINCT commit_sha FROM test_results
          WHERE created_at > CURRENT_TIMESTAMP - INTERVAL (${Number(window)} || ' days')
-       )) AS commits_with_changes
+       )) AS commits_with_changes,
+      (SELECT MAX(created_at)::VARCHAR FROM test_results) AS last_data_at
   `);
 
   const commitCount = dataRow?.commit_count ?? 0;
@@ -265,6 +271,10 @@ export async function computeKpi(
       coFailureCoverage: Math.round(coFailureCoverage * 1000) / 10,
       coFailureReady: coFailureCoverage >= 0.8,
       confidence,
+      lastDataAt: dataRow?.last_data_at ?? null,
+      staleDays: dataRow?.last_data_at
+        ? Math.floor((Date.now() - new Date(dataRow.last_data_at).getTime()) / 86400000)
+        : null,
     },
   };
 }
@@ -310,6 +320,14 @@ export function formatKpi(kpi: FlakerKpi): string {
   lines.push(`  Commits:          ${kpi.data.commitCount} (${kpi.data.confidence})`);
   lines.push(`  Co-failure data:  ${kpi.data.commitsWithChanges}/${kpi.data.commitCount} commits (${kpi.data.coFailureCoverage}%)`);
   lines.push(`  Co-failure ready: ${kpi.data.coFailureReady ? "yes" : "no"}`);
+  if (kpi.data.lastDataAt) {
+    const stale = kpi.data.staleDays ?? 0;
+    if (stale > 7) {
+      lines.push(`  Last data:        ${kpi.data.lastDataAt.slice(0, 10)} (${stale} days ago — stale, run \`flaker collect\`)`);
+    } else {
+      lines.push(`  Last data:        ${kpi.data.lastDataAt.slice(0, 10)} (${stale}d ago)`);
+    }
+  }
 
   // Issues + next steps
   lines.push("");
@@ -330,6 +348,10 @@ export function formatKpi(kpi: FlakerKpi): string {
   if (!kpi.data.coFailureReady) {
     issues.push("co-failure data incomplete");
     steps.push("Ensure `flaker collect` runs with GITHUB_TOKEN");
+  }
+  if (kpi.data.staleDays != null && kpi.data.staleDays > 7) {
+    issues.push(`data is ${kpi.data.staleDays} days old`);
+    steps.push(`Refresh: \`flaker collect --last 7\``);
   }
   if (s.matchedCommits === 0 && s.sampleRatio == null) {
     steps.push(`Start sampling: \`flaker run\``);
