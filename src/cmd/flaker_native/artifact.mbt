@@ -1,12 +1,3 @@
-///|
-fn bytes_to_string(b : Bytes) -> String {
-  let buf = StringBuilder::new()
-  for i = 0; i < b.length(); i = i + 1 {
-    buf.write_char(Char::from_int(b[i].to_int()))
-  }
-  buf.to_string()
-}
-
 ///| A parsed test result.
 struct TestResult {
   suite : String
@@ -44,7 +35,7 @@ pub async fn process_run_artifact(
           let text = bytes_to_string(entry.data)
           let results = parse_vitest_json_text(text)
           if results.length() > 0 {
-            insert_test_results(db, results, run)
+            insert_test_results_batch(db, results, run)
             count = count + results.length()
           }
         }
@@ -136,18 +127,47 @@ fn parse_vitest_json(json : Json) -> Array[TestResult] {
   results
 }
 
-///|
-fn insert_test_results(
+///| Insert test results in batches of 50 rows.
+fn insert_test_results_batch(
   db : @duckdb.Connection,
   results : Array[TestResult],
   run : @github_actions.WorkflowRun,
 ) -> Unit {
   let run_id = run.id.to_int64()
-  for r in results {
-    let suite = r.suite.replace(old="'", new="''")
-    let name = r.test_name.replace(old="'", new="''")
-    let err = r.error_message.replace(old="'", new="''")
-    let sql = "INSERT INTO test_results (id, workflow_run_id, suite, test_name, status, duration_ms, error_message, commit_sha, created_at) VALUES (nextval('test_results_id_seq'), \{run_id}, '\{suite}', '\{name}', '\{r.status}', \{r.duration_ms}, '\{err}', '\{run.head_sha}', '\{run.created_at}')"
-    exec_sql(db, sql)
+  let batch_size = 50
+  let mut i = 0
+  while i < results.length() {
+    let b = StringBuilder::new()
+    b.write_string("INSERT INTO test_results (id, workflow_run_id, suite, test_name, status, duration_ms, error_message, commit_sha, created_at) VALUES ")
+    let end = if i + batch_size < results.length() {
+      i + batch_size
+    } else {
+      results.length()
+    }
+    for j = i; j < end; j = j + 1 {
+      if j > i {
+        b.write_string(", ")
+      }
+      let r = results[j]
+      b.write_string("(nextval('test_results_id_seq'), ")
+      b.write_string(run_id.to_string())
+      b.write_string(", '")
+      b.write_string(sql_escape(r.suite))
+      b.write_string("', '")
+      b.write_string(sql_escape(r.test_name))
+      b.write_string("', '")
+      b.write_string(r.status)
+      b.write_string("', ")
+      b.write_string(r.duration_ms.to_string())
+      b.write_string(", '")
+      b.write_string(sql_escape(r.error_message))
+      b.write_string("', '")
+      b.write_string(sql_escape(run.head_sha))
+      b.write_string("', '")
+      b.write_string(sql_escape(run.created_at))
+      b.write_string("')")
+    }
+    exec_sql(db, b.to_string())
+    i = end
   }
 }

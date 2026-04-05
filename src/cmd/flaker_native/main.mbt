@@ -26,22 +26,11 @@ fn print_help() -> Unit {
   println("                               [--strategy random|weighted|hybrid]")
 }
 
-///|
-fn parse_int_arg(args : Array[String], flag : String, default : Int) -> Int {
-  for i = 0; i < args.length() - 1; i = i + 1 {
-    if args[i] == flag {
-      return try { @strconv.parse_int(args[i + 1]) } catch { _ => default }
-    }
-  }
-  default
-}
-
 // ─── collect ───
 
 ///|
-async fn cmd_collect(args : Array[String]) -> Unit {
+async fn cmd_collect(_args : Array[String]) -> Unit {
   let config = read_config()
-  let last_days = parse_int_arg(args, "--last", 30)
   let token = match @env.get_env_var("GITHUB_TOKEN") {
     Some(t) => t
     None => {
@@ -56,22 +45,22 @@ async fn cmd_collect(args : Array[String]) -> Unit {
   let client = @github_client.GitHubClient::new(token)
   defer client.close()
 
-  // Date filter
-  let created = if last_days > 0 {
-    // Approximate: just pass the filter to GitHub
-    let _ = last_days
-    None // TODO: compute ISO date when @time is available
-  } else {
-    None
-  }
-
   let runs = @github_actions.list_workflow_runs(
     client,
     config.owner,
     config.name,
     per_page=100,
-    created?,
   )
+
+  // Prefetch existing run IDs to avoid N queries
+  let existing_ids = query_cells(
+    db,
+    "SELECT id::VARCHAR FROM workflow_runs",
+  )
+  let existing_set : Map[String, Bool] = {}
+  for row in existing_ids {
+    existing_set.set(row[0], true)
+  }
 
   let mut runs_imported = 0
   let mut tests_imported = 0
@@ -79,10 +68,10 @@ async fn cmd_collect(args : Array[String]) -> Unit {
 
   for run in runs.workflow_runs {
     let run_id = run.id.to_int64()
-    if run_exists(db, run_id) {
+    if existing_set.contains(run_id.to_string()) {
       continue
     }
-    exec_sql(db, new_insert_run_sql(run_id, repo, run))
+    exec_sql(db, build_insert_run_sql(run_id, repo, run))
     runs_imported = runs_imported + 1
 
     let count = try {
@@ -138,7 +127,6 @@ async fn cmd_calibrate(_args : Array[String]) -> Unit {
   println("  Flaky rate:     \{pct}%")
   println("")
 
-  // Strategy recommendation
   let strategy = if test_count < 50 {
     "random"
   } else if flaky_rate < 0.20 {
@@ -161,18 +149,10 @@ async fn cmd_calibrate(_args : Array[String]) -> Unit {
   close_db(db)
 }
 
-// ─── config ───
-
-///|
-async fn read_config() -> FlakerConfig {
-  let data = @fs.read_file("flaker.toml")
-  parse_config(data.text())
-}
-
 // ─── SQL ───
 
 ///|
-fn new_insert_run_sql(
+fn build_insert_run_sql(
   run_id : Int64,
   repo : String,
   run : @github_actions.WorkflowRun,
@@ -181,17 +161,17 @@ fn new_insert_run_sql(
   b.write_string("INSERT INTO workflow_runs (id, repo, branch, commit_sha, event, source, status, created_at) VALUES (")
   b.write_string(run_id.to_string())
   b.write_string(", '")
-  b.write_string(repo)
+  b.write_string(sql_escape(repo))
   b.write_string("', '")
-  b.write_string(run.head_branch)
+  b.write_string(sql_escape(run.head_branch))
   b.write_string("', '")
-  b.write_string(run.head_sha)
+  b.write_string(sql_escape(run.head_sha))
   b.write_string("', '")
-  b.write_string(run.event)
+  b.write_string(sql_escape(run.event))
   b.write_string("', 'ci', '")
-  b.write_string(run.conclusion)
+  b.write_string(sql_escape(run.conclusion))
   b.write_string("', '")
-  b.write_string(run.created_at)
+  b.write_string(sql_escape(run.created_at))
   b.write_string("') ON CONFLICT (id) DO NOTHING")
   b.to_string()
 }
@@ -211,53 +191,3 @@ let full_schema_ddl : String =
   #|  commit_sha VARCHAR NOT NULL, variant JSON, quarantine JSON, created_at TIMESTAMP
   #|);
   #|CREATE SEQUENCE IF NOT EXISTS test_results_id_seq START 1;
-
-// ─── DuckDB helpers ───
-
-///|
-fn connect_db(path : String) -> @duckdb.Connection {
-  let mut conn : @duckdb.Connection? = None
-  @duckdb.connect(path=path, on_ready=fn(r) {
-    match r {
-      Ok(c) => conn = Some(c)
-      Err(_) => ()
-    }
-  })
-  conn.unwrap()
-}
-
-///|
-fn exec_sql(db : @duckdb.Connection, sql : String) -> Unit {
-  db.query(sql, on_done=fn(_) {  })
-}
-
-///|
-fn query_int(db : @duckdb.Connection, sql : String) -> Int {
-  let mut val = 0
-  db.query(sql, on_done=fn(r) {
-    match r {
-      Ok(qr) =>
-        if qr.row_count() > 0 {
-          match qr.get_int(0, 0) {
-            Some(n) => val = n
-            None => ()
-          }
-        }
-      Err(_) => ()
-    }
-  })
-  val
-}
-
-///|
-fn run_exists(db : @duckdb.Connection, run_id : Int64) -> Bool {
-  query_int(
-    db,
-    "SELECT COUNT(*)::INTEGER FROM workflow_runs WHERE id = \{run_id}",
-  ) > 0
-}
-
-///|
-fn close_db(db : @duckdb.Connection) -> Unit {
-  db.close(on_done=fn(_) {  })
-}

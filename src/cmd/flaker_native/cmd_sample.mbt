@@ -42,24 +42,8 @@ async fn cmd_sample(args : Array[String]) -> Unit {
   close_db(db)
 }
 
-///|
-fn parse_string_arg(
-  args : Array[String],
-  flag : String,
-  default : String,
-) -> String {
-  for i = 0; i < args.length() - 1; i = i + 1 {
-    if args[i] == flag {
-      return args[i + 1]
-    }
-  }
-  default
-}
-
 ///| Build TestMeta array from DuckDB.
 fn build_test_meta(db : @duckdb.Connection) -> Array[@types.TestMeta] {
-  // col 0: suite, 1: test_name, 2: total_runs, 3: fail_count, 4: flaky_rate,
-  //     5: last_run_at, 6: avg_duration_ms
   let rows = query_cells(
     db,
     "SELECT suite, test_name, COUNT(*)::INTEGER, COUNT(*) FILTER (WHERE status IN ('failed', 'flaky'))::INTEGER, ROUND(COUNT(*) FILTER (WHERE status IN ('failed', 'flaky')) * 100.0 / COUNT(*), 2), MAX(created_at)::VARCHAR, COALESCE(AVG(duration_ms), 0)::INTEGER FROM test_results GROUP BY suite, test_name",
