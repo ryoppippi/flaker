@@ -95,6 +95,9 @@ import {
 import { detectProfileName, resolveProfile, computeAdaptivePercentage, type ResolvedProfile } from "./profile.js";
 import { computeKpi } from "./commands/kpi.js";
 import { runInsights } from "./commands/insights.js";
+import { parseConfirmTarget, formatConfirmResult } from "./commands/confirm.js";
+import { runConfirmLocal } from "./commands/confirm-local.js";
+import { runConfirmRemote } from "./commands/confirm-remote.js";
 
 function formatHelpExamples(
   title: string,
@@ -1664,6 +1667,60 @@ program
     }
   });
 
+// --- confirm ---
+program
+  .command("confirm <target>")
+  .description("Re-run a specific test N times to distinguish broken/flaky/transient")
+  .option("--repeat <n>", "Number of repetitions", "5")
+  .option("--runner <mode>", "Execution mode: remote or local", "remote")
+  .option("--workflow <name>", "Workflow filename for remote mode", "flaker-confirm.yml")
+  .action(
+    async (
+      target: string,
+      opts: { repeat: string; runner: string; workflow: string },
+    ) => {
+      const { suite, testName } = parseConfirmTarget(target);
+      const repeat = parseInt(opts.repeat, 10);
+      if (!Number.isInteger(repeat) || repeat < 1) {
+        console.error("Error: --repeat must be a positive integer");
+        process.exit(1);
+      }
+
+      const config = loadConfig(process.cwd());
+      console.log(`# Confirm: ${suite} > ${testName} (${repeat}x, ${opts.runner})`);
+      console.log("");
+
+      let result;
+      if (opts.runner === "local") {
+        const runner = createRunner(config.runner);
+        result = await runConfirmLocal({
+          suite,
+          testName,
+          repeat,
+          runner,
+          cwd: process.cwd(),
+        });
+      } else {
+        const repo = `${config.repo.owner}/${config.repo.name}`;
+        result = await runConfirmRemote({
+          suite,
+          testName,
+          repeat,
+          repo,
+          workflow: opts.workflow,
+          adapter: config.adapter.type,
+        });
+      }
+
+      console.log("");
+      console.log(formatConfirmResult(result));
+
+      if (result.verdict === "broken") {
+        process.exit(1);
+      }
+    },
+  );
+
 // --- doctor ---
 program
   .command("doctor")
@@ -1755,6 +1812,11 @@ program
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "doctor"), [
     "flaker doctor",
+  ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "confirm"), [
+    'flaker confirm "tests/api.test.ts:handles timeout"',
+    'flaker confirm "tests/api.test.ts:handles timeout" --runner local',
+    'flaker confirm "tests/api.test.ts:handles timeout" --repeat 10',
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "context"), [
     "flaker context",
