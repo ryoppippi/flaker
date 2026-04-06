@@ -98,6 +98,8 @@ import { runInsights } from "./commands/insights.js";
 import { parseConfirmTarget, formatConfirmResult } from "./commands/confirm.js";
 import { runConfirmLocal } from "./commands/confirm-local.js";
 import { runConfirmRemote } from "./commands/confirm-remote.js";
+import { runRetry, formatRetryReport } from "./commands/retry.js";
+import { createTestResultAdapter } from "./adapters/index.js";
 
 function formatHelpExamples(
   title: string,
@@ -1721,6 +1723,52 @@ program
     },
   );
 
+// --- retry ---
+program
+  .command("retry")
+  .description("Re-run failed tests from a CI workflow run locally")
+  .option("--run <id>", "Workflow run ID (default: most recent failure)")
+  .option("--repo <owner/name>", "Repository (default: from flaker.toml)")
+  .action(
+    async (opts: { run?: string; repo?: string }) => {
+      const config = loadConfig(process.cwd());
+      const repo = opts.repo ?? `${config.repo.owner}/${config.repo.name}`;
+      const runId = opts.run ? parseInt(opts.run, 10) : undefined;
+      const adapter = createTestResultAdapter(config.adapter.type, config.adapter.command);
+      const runner = createRunner(config.runner);
+      const artifactName = config.adapter.artifact_name ?? `${config.adapter.type}-report`;
+
+      console.log("# Retry: fetching CI failures and running locally");
+      console.log("");
+
+      try {
+        const { runId: resolvedRunId, results } = await runRetry({
+          runId,
+          repo,
+          adapter,
+          runner,
+          artifactName,
+          cwd: process.cwd(),
+        });
+
+        if (results.length === 0) {
+          return;
+        }
+
+        console.log("");
+        console.log(formatRetryReport(resolvedRunId, results));
+
+        const reproduced = results.filter((r) => r.reproduced);
+        if (reproduced.length > 0) {
+          process.exit(1);
+        }
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+        process.exit(1);
+      }
+    },
+  );
+
 // --- doctor ---
 program
   .command("doctor")
@@ -1817,6 +1865,10 @@ program
     'flaker confirm "tests/api.test.ts:handles timeout"',
     'flaker confirm "tests/api.test.ts:handles timeout" --runner local',
     'flaker confirm "tests/api.test.ts:handles timeout" --repeat 10',
+  ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "retry"), [
+    "flaker retry",
+    "flaker retry --run 12345678",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "context"), [
     "flaker context",
