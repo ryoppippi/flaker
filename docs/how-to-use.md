@@ -466,3 +466,25 @@ flaker quarantine --remove "suite>testName"
   run: |
     flaker run --strategy hybrid --count 50 --skip-quarantined
 ```
+
+### Coverage-Guided Sampling
+
+```bash
+# Collect coverage data
+flaker collect-coverage --format istanbul --input coverage/coverage-final.json
+
+# Sample using coverage data
+flaker sample --strategy coverage-guided --changed src/auth.ts --percentage 20
+```
+
+詳細は [Coverage-Guided Test Sampling](coverage-guided-sampling.md) を参照。
+
+### Diagnose Flaky Tests
+
+```bash
+# Diagnose flaky test causes
+flaker diagnose --suite "tests/auth.test.ts" --test "login flow" --runs 5
+```
+
+ミューテーションベースでフレーキー原因を特定する（順序依存、環境依存、非決定性）。
+詳細は [Diagnose Flaky Tests](diagnose.md) を参照。

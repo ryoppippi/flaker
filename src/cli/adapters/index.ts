@@ -8,6 +8,7 @@ import { vrtMigrationAdapter } from "./vrt-migration.js";
 import { tapAdapter } from "./tap.js";
 import { gotestAdapter } from "./gotest.js";
 import { cargoTestAdapter } from "./cargo.js";
+import { moontestAdapter } from "./moontest.js";
 
 export function createTestResultAdapter(
   type: string,
@@ -30,6 +31,8 @@ export function createTestResultAdapter(
       return gotestAdapter;
     case "cargo-test":
       return cargoTestAdapter;
+    case "moontest":
+      return moontestAdapter;
     case "custom":
       if (!customCommand) {
         throw new Error("Custom adapter requires a command (customCommand)");

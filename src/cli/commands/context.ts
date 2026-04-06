@@ -65,6 +65,10 @@ export async function buildContext(
      )`,
   );
 
+  const [testCoverageCount] = await store.raw<{ cnt: number }>(
+    "SELECT COUNT(DISTINCT test_id)::INTEGER AS cnt FROM test_coverage",
+  );
+
   let oldestDays: number | null = null;
   let newestDays: number | null = null;
   try {
@@ -88,7 +92,7 @@ export async function buildContext(
       commitHistory: commitCount.cnt,
       commitsWithChanges: changesCount.cnt,
       resolverConfigured: opts.resolverConfigured,
-      coverageDataAvailable: false, // future: check for coverage data
+      coverageDataAvailable: testCoverageCount.cnt > 0,
       gbdtModelAvailable,
       coFailureDataPoints: coFailureCount.cnt,
       tunedAlpha,
@@ -130,7 +134,7 @@ export async function buildContext(
         ],
       },
       "coverage-guided": {
-        requires: ["coverage data collection (not yet implemented)"],
+        requires: ["coverage data (collect-coverage command)"],
         characteristics: [
           "Greedy set cover maximizing changed-edge coverage",
           "Very high precision (tests selected are always relevant)",

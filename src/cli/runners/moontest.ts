@@ -16,8 +16,22 @@ import {
 
 export function parseMoonTestOutput(stdout: string): TestCaseResult[] {
   const results: TestCaseResult[] = [];
-  const regex = /^test\s+(\S+)\s+\.\.\.\s+(ok|FAILED)\s*$/gm;
+
+  // Verbose format: [package] test file:line ("name") ok|FAILED
+  const verboseRegex = /^\[([^\]]+)\]\s+test\s+(\S+:\d+)\s+\("([^"]+)"\)\s+(ok|FAILED)\s*$/gm;
   let match: RegExpExecArray | null;
+  while ((match = verboseRegex.exec(stdout)) !== null) {
+    const pkg = match[1];
+    const fileLine = match[2];
+    const testName = match[3];
+    const status = match[4] === "ok" ? "passed" : "failed";
+    results.push({ suite: `${pkg}/${fileLine}`, testName, status, durationMs: 0, retryCount: 0 });
+  }
+
+  if (results.length > 0) return results;
+
+  // Non-verbose format: test <name> ... ok|FAILED
+  const regex = /^test\s+(\S+)\s+\.\.\.\s+(ok|FAILED)\s*$/gm;
   while ((match = regex.exec(stdout)) !== null) {
     const fullName = match[1];
     const status = match[2] === "ok" ? "passed" : "failed";
@@ -31,8 +45,21 @@ export function parseMoonTestOutput(stdout: string): TestCaseResult[] {
 
 export function parseMoonTestList(stdout: string): TestId[] {
   const ids: TestId[] = [];
-  const regex = /^test\s+(\S+)/gm;
+
+  // Verbose format: [package] test file:line ("name") ok|FAILED
+  const verboseRegex = /^\[([^\]]+)\]\s+test\s+(\S+:\d+)\s+\("([^"]+)"\)\s+(ok|FAILED)\s*$/gm;
   let match: RegExpExecArray | null;
+  while ((match = verboseRegex.exec(stdout)) !== null) {
+    const pkg = match[1];
+    const fileLine = match[2];
+    const testName = match[3];
+    ids.push({ suite: `${pkg}/${fileLine}`, testName });
+  }
+
+  if (ids.length > 0) return ids;
+
+  // Non-verbose format: test <name>
+  const regex = /^test\s+(\S+)/gm;
   while ((match = regex.exec(stdout)) !== null) {
     const fullName = match[1];
     const lastSlash = fullName.lastIndexOf("/");
@@ -66,7 +93,13 @@ export class MoonTestRunner implements RunnerAdapter {
 
   async listTests(opts?: ExecuteOpts): Promise<TestId[]> {
     const { cmd, args } = parseBaseCommand(this.baseCommand);
-    const { stdout } = this.safeExecFn(cmd, [...args, "--dry-run"], opts);
+    // Try --dry-run first; if it yields no tests, fall back to actual execution
+    const { stdout: dryStdout } = this.safeExecFn(cmd, [...args, "--dry-run"], opts);
+    const dryList = parseMoonTestList(dryStdout);
+    if (dryList.length > 0) return dryList;
+
+    // Fallback: run tests and parse output (moon test -v doesn't support --dry-run well on JS target)
+    const { stdout } = this.safeExecFn(cmd, args, opts);
     return parseMoonTestList(stdout);
   }
 }

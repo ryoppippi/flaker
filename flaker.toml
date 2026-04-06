@@ -22,3 +22,20 @@ calibrated_at = "2026-04-04"
 detected_flaky_rate = 0.005
 detected_co_failure_strength = 0.5
 detected_test_count = 437
+
+[profile.scheduled]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+holdout_ratio = 0.1
+adaptive = true
+adaptive_fnr_low = 0.02
+adaptive_fnr_high = 0.05
+adaptive_min_percentage = 15
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 30
+fallback_strategy = "weighted"

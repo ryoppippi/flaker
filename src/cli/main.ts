@@ -4,7 +4,7 @@ import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Octokit } from "@octokit/rest";
-import { loadConfig, writeSamplingConfig, type SamplingConfig } from "./config.js";
+import { loadConfig, writeSamplingConfig, type SamplingConfig, type FlakerConfig } from "./config.js";
 import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
@@ -42,7 +42,9 @@ import { runQuery, formatQueryResult } from "./commands/query.js";
 import {
   runQuarantine,
   formatQuarantineTable,
+  buildQuarantineIssueOpts,
 } from "./commands/quarantine.js";
+import { isGhAvailable, createGhIssue } from "./gh.js";
 import {
   runEval,
   formatEvalReport,
@@ -67,6 +69,7 @@ import {
 } from "./commands/check.js";
 import {
   createReportSummaryArtifact,
+  formatPrComment,
   formatReportAggregate,
   formatReportDiff,
   formatReportSummary,
@@ -89,6 +92,14 @@ import {
   resolveQuarantineManifestPath,
   validateQuarantineManifest,
 } from "./quarantine-manifest.js";
+import { detectProfileName, resolveProfile, computeAdaptivePercentage, type ResolvedProfile } from "./profile.js";
+import { computeKpi } from "./commands/kpi.js";
+import { runInsights } from "./commands/insights.js";
+import { parseConfirmTarget, formatConfirmResult } from "./commands/confirm.js";
+import { runConfirmLocal } from "./commands/confirm-local.js";
+import { runConfirmRemote } from "./commands/confirm-remote.js";
+import { runRetry, formatRetryReport } from "./commands/retry.js";
+import { createTestResultAdapter } from "./adapters/index.js";
 
 function formatHelpExamples(
   title: string,
@@ -218,6 +229,7 @@ async function createConfiguredResolver(
 }
 
 interface SamplingCliOpts {
+  profile?: string;
   strategy: string;
   count?: string;
   percentage?: string;
@@ -230,7 +242,8 @@ interface SamplingCliOpts {
 
 function addSamplingOptions<T extends Command>(cmd: T): T {
   return cmd
-    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt")
+    .option("--profile <name>", "Execution profile: scheduled, ci, local (auto-detected if omitted)")
+    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt, full")
     .option("--count <n>", "Number of tests to sample")
     .option("--percentage <n>", "Percentage of tests to sample")
     .option("--skip-quarantined", "Exclude quarantined tests")
@@ -241,6 +254,7 @@ function addSamplingOptions<T extends Command>(cmd: T): T {
 }
 
 interface ResolvedSamplingOpts {
+  resolvedProfile: ResolvedProfile;
   strategy: string;
   count?: number;
   percentage?: number;
@@ -254,17 +268,21 @@ interface ResolvedSamplingOpts {
 /** Merge CLI options with [sampling] config and parse to final types. CLI args take priority. */
 function resolveSamplingOpts(
   opts: SamplingCliOpts,
-  sampling?: SamplingConfig,
+  config: FlakerConfig,
 ): ResolvedSamplingOpts {
+  const profileName = detectProfileName(opts.profile);
+  const profile = resolveProfile(profileName, config.profile, config.sampling);
+
   return {
-    strategy: opts.strategy ?? sampling?.strategy ?? "weighted",
+    resolvedProfile: profile,
+    strategy: opts.strategy ?? profile.strategy,
     count: parseSampleCount(opts.count),
-    percentage: parseSamplePercentage(opts.percentage) ?? sampling?.percentage,
-    skipQuarantined: opts.skipQuarantined ?? sampling?.skip_quarantined,
+    percentage: parseSamplePercentage(opts.percentage) ?? profile.percentage,
+    skipQuarantined: opts.skipQuarantined ?? profile.skip_quarantined,
     changed: opts.changed,
-    coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : sampling?.co_failure_days,
-    holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : sampling?.holdout_ratio,
-    modelPath: opts.modelPath ?? sampling?.model_path,
+    coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : profile.co_failure_days,
+    holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : profile.holdout_ratio,
+    modelPath: opts.modelPath ?? profile.model_path,
   };
 }
 
@@ -473,7 +491,8 @@ addSamplingOptions(
 ).action(
     async (rawOpts: SamplingCliOpts) => {
       const config = loadConfig(process.cwd());
-      const opts = resolveSamplingOpts(rawOpts, config.sampling);
+      const opts = resolveSamplingOpts(rawOpts, config);
+      console.log(`# Profile: ${opts.resolvedProfile.name}`);
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
@@ -547,7 +566,9 @@ addSamplingOptions(
     async (rawOpts: SamplingCliOpts & { runner: string; retry?: boolean }) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
-      const opts = { ...resolveSamplingOpts(rawOpts, config.sampling), runner: rawOpts.runner, retry: rawOpts.retry };
+      const resolved = resolveSamplingOpts(rawOpts, config);
+      console.log(`# Profile: ${resolved.resolvedProfile.name}`);
+      const opts = { ...resolved, runner: rawOpts.runner, retry: rawOpts.retry };
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
@@ -618,6 +639,36 @@ addSamplingOptions(
         }
         const commitSha = resolveCurrentCommitSha(cwd) ?? `local-${Date.now()}`;
         const kpi = await runSamplingKpi({ store });
+
+        // Adaptive percentage adjustment
+        const profile = opts.resolvedProfile;
+        if (profile.adaptive && opts.percentage != null) {
+          const kpiData = await computeKpi(store);
+          const insightsData = await runInsights({ store });
+          const divergenceRate = insightsData.summary.totalTests > 0
+            ? insightsData.summary.ciOnlyCount / insightsData.summary.totalTests
+            : null;
+          const adaptive = computeAdaptivePercentage(
+            {
+              falseNegativeRate: kpiData.sampling.falseNegativeRate,
+              divergenceRate,
+            },
+            {
+              basePercentage: opts.percentage,
+              fnrLow: profile.adaptive_fnr_low,
+              fnrHigh: profile.adaptive_fnr_high,
+              minPercentage: profile.adaptive_min_percentage,
+              step: profile.adaptive_step,
+            },
+          );
+          opts.percentage = adaptive.percentage;
+          console.log(`# Adaptive: ${adaptive.reason}`);
+        }
+
+        if (profile.max_duration_seconds != null) {
+          console.log(`# Time budget: ${profile.max_duration_seconds}s`);
+        }
+
         const runResult = await runTests({
           store,
           runner: createRunner(config.runner),
@@ -802,6 +853,7 @@ reportCommand
   .option("--meta <pairs>", "Comma-separated extra metadata (key=value)")
   .option("--json", "Output JSON report")
   .option("--markdown", "Output Markdown report")
+  .option("--pr-comment", "Output compact Markdown for PR comments")
   .action(
     (opts: {
       adapter: string;
@@ -816,9 +868,11 @@ reportCommand
       meta?: string;
       json?: boolean;
       markdown?: boolean;
+      prComment?: boolean;
     }) => {
-      if (opts.json && opts.markdown) {
-        console.error("Error: choose either --json or --markdown");
+      const formatCount = [opts.json, opts.markdown, opts.prComment].filter(Boolean).length;
+      if (formatCount > 1) {
+        console.error("Error: choose one of --json, --markdown, or --pr-comment");
         process.exit(1);
       }
       if (opts.bundle && opts.markdown) {
@@ -846,6 +900,10 @@ reportCommand
             2,
           ),
         );
+        return;
+      }
+      if (opts.prComment) {
+        console.log(formatPrComment(summary));
         return;
       }
       console.log(
@@ -949,8 +1007,9 @@ const quarantineCommand = program
     "Remove a test from quarantine (suite:testName)",
   )
   .option("--auto", "Auto-quarantine tests exceeding flaky threshold")
+  .option("--create-issues", "Create GitHub issues for newly quarantined tests (requires gh CLI)")
   .action(
-    async (opts: { add?: string; remove?: string; auto?: boolean }) => {
+    async (opts: { add?: string; remove?: string; auto?: boolean; createIssues?: boolean }) => {
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
@@ -991,6 +1050,42 @@ const quarantineCommand = program
           );
           if (quarantined.length > 0) {
             console.log(formatQuarantineTable(quarantined));
+          }
+          if (opts.createIssues) {
+            if (!isGhAvailable()) {
+              console.error("Warning: gh CLI not found. Skipping issue creation.");
+              console.error("Install: https://cli.github.com/");
+            } else if (quarantined.length > 0) {
+              const flaky = await store.queryFlakyTests({ windowDays: 30 });
+              let created = 0;
+              for (const q of quarantined) {
+                const flakyInfo = flaky.find(
+                  (f) => f.suite === q.suite && f.testName === q.testName,
+                );
+                const issueInput = {
+                  suite: q.suite,
+                  testName: q.testName,
+                  flakyRate: flakyInfo?.flakyRate ?? 0,
+                  totalRuns: flakyInfo?.totalRuns ?? 0,
+                  reason: q.reason,
+                };
+                const issueOpts = buildQuarantineIssueOpts(issueInput);
+                const repo = `${config.repo.owner}/${config.repo.name}`;
+                const url = createGhIssue({
+                  title: issueOpts.title,
+                  body: issueOpts.body,
+                  labels: issueOpts.labels,
+                  repo,
+                });
+                if (url) {
+                  console.log(`  Created issue: ${url}`);
+                  created++;
+                }
+              }
+              if (created > 0) {
+                console.log(`Created ${created} issue(s) for quarantined tests.`);
+              }
+            }
           }
         } else {
           const result = await runQuarantine({ store, action: "list" });
@@ -1236,6 +1331,77 @@ program
       }
     } finally {
       await store.close();
+    }
+  });
+
+// --- collect-coverage ---
+program
+  .command("collect-coverage")
+  .description("Collect test coverage data and store edges in DuckDB")
+  .requiredOption("--format <type>", "Coverage format: istanbul, v8, playwright")
+  .requiredOption("--input <path>", "Path to coverage JSON file or directory")
+  .option("--test-id-prefix <prefix>", "Prefix for test IDs (e.g. commit SHA)")
+  .action(async (opts: { format: string; input: string; testIdPrefix?: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const { collectCoverage, formatCollectCoverageSummary } = await import("./commands/collect-coverage.js");
+      const result = await collectCoverage({
+        store,
+        format: opts.format,
+        input: opts.input,
+        testIdPrefix: opts.testIdPrefix,
+      });
+      console.log(formatCollectCoverageSummary(result));
+    } catch (e: unknown) {
+      console.error(`Error: ${e instanceof Error ? e.message : e}`);
+      process.exit(1);
+    } finally {
+      await store.close();
+    }
+  });
+
+// --- diagnose ---
+program
+  .command("diagnose")
+  .description("Diagnose flaky test causes by applying mutations (order, repeat, env, isolate)")
+  .requiredOption("--suite <suite>", "Test suite file")
+  .requiredOption("--test <name>", "Test name")
+  .option("--runs <n>", "Number of runs per mutation", "3")
+  .option("--mutations <list>", "Comma-separated mutation strategies: order,repeat,env,isolate,all", "all")
+  .option("--json", "Output JSON report")
+  .action(async (opts: { suite: string; test: string; runs: string; mutations: string; json?: boolean }) => {
+    const config = loadConfig(process.cwd());
+    const { createRunner } = await import("./runners/index.js");
+    const runner = createRunner({
+      type: config.runner.type,
+      command: config.runner.command,
+      execute: config.runner.execute,
+      list: config.runner.list,
+    });
+
+    const mutations = opts.mutations.split(",").map((m) => m.trim());
+
+    try {
+      const { runDiagnose, formatDiagnoseReport } = await import("./commands/diagnose.js");
+      const report = await runDiagnose({
+        runner,
+        suite: opts.suite,
+        testName: opts.test,
+        runs: parseInt(opts.runs, 10),
+        mutations,
+        cwd: process.cwd(),
+      });
+
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(formatDiagnoseReport(report));
+      }
+    } catch (e: unknown) {
+      console.error(`Error: ${e instanceof Error ? e.message : e}`);
+      process.exit(1);
     }
   });
 
@@ -1574,6 +1740,106 @@ program
     }
   });
 
+// --- confirm ---
+program
+  .command("confirm <target>")
+  .description("Re-run a specific test N times to distinguish broken/flaky/transient")
+  .option("--repeat <n>", "Number of repetitions", "5")
+  .option("--runner <mode>", "Execution mode: remote or local", "remote")
+  .option("--workflow <name>", "Workflow filename for remote mode", "flaker-confirm.yml")
+  .action(
+    async (
+      target: string,
+      opts: { repeat: string; runner: string; workflow: string },
+    ) => {
+      const { suite, testName } = parseConfirmTarget(target);
+      const repeat = parseInt(opts.repeat, 10);
+      if (!Number.isInteger(repeat) || repeat < 1) {
+        console.error("Error: --repeat must be a positive integer");
+        process.exit(1);
+      }
+
+      const config = loadConfig(process.cwd());
+      console.log(`# Confirm: ${suite} > ${testName} (${repeat}x, ${opts.runner})`);
+      console.log("");
+
+      let result;
+      if (opts.runner === "local") {
+        const runner = createRunner(config.runner);
+        result = await runConfirmLocal({
+          suite,
+          testName,
+          repeat,
+          runner,
+          cwd: process.cwd(),
+        });
+      } else {
+        const repo = `${config.repo.owner}/${config.repo.name}`;
+        result = await runConfirmRemote({
+          suite,
+          testName,
+          repeat,
+          repo,
+          workflow: opts.workflow,
+          adapter: config.adapter.type,
+        });
+      }
+
+      console.log("");
+      console.log(formatConfirmResult(result));
+
+      if (result.verdict === "broken") {
+        process.exit(1);
+      }
+    },
+  );
+
+// --- retry ---
+program
+  .command("retry")
+  .description("Re-run failed tests from a CI workflow run locally")
+  .option("--run <id>", "Workflow run ID (default: most recent failure)")
+  .option("--repo <owner/name>", "Repository (default: from flaker.toml)")
+  .action(
+    async (opts: { run?: string; repo?: string }) => {
+      const config = loadConfig(process.cwd());
+      const repo = opts.repo ?? `${config.repo.owner}/${config.repo.name}`;
+      const runId = opts.run ? parseInt(opts.run, 10) : undefined;
+      const adapter = createTestResultAdapter(config.adapter.type, config.adapter.command);
+      const runner = createRunner(config.runner);
+      const artifactName = config.adapter.artifact_name ?? `${config.adapter.type}-report`;
+
+      console.log("# Retry: fetching CI failures and running locally");
+      console.log("");
+
+      try {
+        const { runId: resolvedRunId, results } = await runRetry({
+          runId,
+          repo,
+          adapter,
+          runner,
+          artifactName,
+          cwd: process.cwd(),
+        });
+
+        if (results.length === 0) {
+          return;
+        }
+
+        console.log("");
+        console.log(formatRetryReport(resolvedRunId, results));
+
+        const reproduced = results.filter((r) => r.reproduced);
+        if (reproduced.length > 0) {
+          process.exit(1);
+        }
+      } catch (e) {
+        console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+        process.exit(1);
+      }
+    },
+  );
+
 // --- doctor ---
 program
   .command("doctor")
@@ -1665,6 +1931,15 @@ program
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "doctor"), [
     "flaker doctor",
+  ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "confirm"), [
+    'flaker confirm "tests/api.test.ts:handles timeout"',
+    'flaker confirm "tests/api.test.ts:handles timeout" --runner local',
+    'flaker confirm "tests/api.test.ts:handles timeout" --repeat 10',
+  ]);
+  appendExamplesToCommand(program.commands.find((command) => command.name() === "retry"), [
+    "flaker retry",
+    "flaker retry --run 12345678",
   ]);
   appendExamplesToCommand(program.commands.find((command) => command.name() === "context"), [
     "flaker context",

@@ -2,6 +2,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "smol-toml";
 
+export interface CoverageConfig {
+  format: string; // istanbul | v8 | playwright
+  input: string; // path to coverage JSON or directory
+  granularity?: string; // statement (default) | function | branch
+}
+
 export interface SamplingConfig {
   strategy: string;
   percentage?: number;
@@ -13,6 +19,22 @@ export interface SamplingConfig {
   detected_flaky_rate?: number;
   detected_co_failure_strength?: number;
   detected_test_count?: number;
+}
+
+export interface ProfileConfig {
+  strategy: string;
+  percentage?: number;
+  holdout_ratio?: number;
+  co_failure_days?: number;
+  model_path?: string;
+  skip_quarantined?: boolean;
+  adaptive?: boolean;
+  adaptive_fnr_low?: number;
+  adaptive_fnr_high?: number;
+  adaptive_min_percentage?: number;
+  adaptive_step?: number;
+  max_duration_seconds?: number;
+  fallback_strategy?: string;
 }
 
 export interface FlakerConfig {
@@ -29,7 +51,9 @@ export interface FlakerConfig {
   affected: { resolver: string; config: string };
   quarantine: { auto: boolean; flaky_rate_threshold: number; min_runs: number };
   flaky: { window_days: number; detection_threshold: number };
+  coverage?: CoverageConfig;
   sampling?: SamplingConfig;
+  profile?: Record<string, ProfileConfig>;
 }
 
 const DEFAULT_CONFIG: FlakerConfig = {

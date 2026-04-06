@@ -104,6 +104,14 @@ CREATE TABLE IF NOT EXISTS commit_changes (
   deletions   INTEGER DEFAULT 0,
   PRIMARY KEY (commit_sha, file_path)
 );
+
+CREATE TABLE IF NOT EXISTS test_coverage (
+  test_id    VARCHAR NOT NULL,
+  suite      VARCHAR NOT NULL,
+  test_name  VARCHAR NOT NULL,
+  edge       VARCHAR NOT NULL,
+  PRIMARY KEY (test_id, edge)
+);
 `;
 
 export const CO_FAILURE_QUERY = `
