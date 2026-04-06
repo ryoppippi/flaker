@@ -52,7 +52,7 @@ import {
 } from "./commands/eval.js";
 import { runReason, formatReasoningReport } from "./commands/reason.js";
 import { runSelfEval, formatSelfEvalReport } from "./commands/self-eval.js";
-import { generateFixture } from "./eval/fixture-generator.js";
+import { loadCore } from "./core/loader.js";
 import { loadFixtureIntoStore } from "./eval/fixture-loader.js";
 import { evaluateFixture } from "./eval/fixture-evaluator.js";
 import { formatEvalFixtureReport, formatSweepReport, formatMultiSweepReport } from "./eval/fixture-report.js";
@@ -1490,7 +1490,18 @@ program
       process.exit(1);
     }
 
-    const baseConfig = { testCount, commitCount, flakyRate, coFailureStrength, filesPerCommit, testsPerFile, samplePercentage, seed };
+    const baseConfig = {
+      test_count: testCount,
+      commit_count: commitCount,
+      flaky_rate: flakyRate,
+      co_failure_strength: coFailureStrength,
+      files_per_commit: filesPerCommit,
+      tests_per_file: testsPerFile,
+      sample_percentage: samplePercentage,
+      seed,
+    };
+
+    const core = await loadCore();
 
     if (opts.multiSweep) {
       const { runSweep } = await import("./eval/fixture-evaluator.js");
@@ -1513,10 +1524,10 @@ program
       const strengths = [0.0, 0.25, 0.5, 0.75, 1.0];
       const reports = [];
       for (const strength of strengths) {
-        const config = { ...baseConfig, coFailureStrength: strength };
+        const config = { ...baseConfig, co_failure_strength: strength };
         const store = new DuckDBStore(":memory:");
         await store.initialize();
-        const fixture = generateFixture(config);
+        const fixture = core.generateFixture(config);
         await loadFixtureIntoStore(store, fixture);
         const results = await evaluateFixture(store, fixture);
         reports.push({ config, results });
@@ -1526,7 +1537,7 @@ program
     } else {
       const store = new DuckDBStore(":memory:");
       await store.initialize();
-      const fixture = generateFixture(baseConfig);
+      const fixture = core.generateFixture(baseConfig);
       await loadFixtureIntoStore(store, fixture);
       const results = await evaluateFixture(store, fixture);
       console.log(formatEvalFixtureReport({ config: baseConfig, results }));

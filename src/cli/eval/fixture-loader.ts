@@ -1,5 +1,5 @@
 import type { MetricStore } from "../storage/types.js";
-import type { FixtureData } from "./fixture-generator.js";
+import type { FixtureData } from "../core/loader.js";
 
 export async function loadFixtureIntoStore(
   store: MetricStore,
@@ -25,19 +25,19 @@ export async function loadFixtureIntoStore(
 
     await store.insertCommitChanges(
       commit.sha,
-      commit.changedFiles.map((f) => ({
-        filePath: f.filePath,
-        changeType: f.changeType,
+      commit.changed_files.map((f) => ({
+        filePath: f.file_path,
+        changeType: f.change_type,
         additions: 10,
         deletions: 5,
       })),
     );
 
     await store.insertTestResults(
-      commit.testResults.map((r) => ({
+      commit.test_results.map((r) => ({
         workflowRunId: runId,
         suite: r.suite,
-        testName: r.testName,
+        testName: r.test_name,
         status: r.status,
         durationMs: 100,
         retryCount: 0,

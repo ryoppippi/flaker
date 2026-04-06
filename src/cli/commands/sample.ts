@@ -279,16 +279,20 @@ async function selectByStrategy(
     }
 
     // Build coverage map: suite -> edges
-    const coverageMap = new Map<string, string[]>();
+    const coverageMap = new Map<string, { test_name: string; edges: string[] }>();
     for (const row of coverageRows) {
-      const existing = coverageMap.get(row.suite) ?? [];
-      existing.push(row.edge);
-      coverageMap.set(row.suite, existing);
+      const existing = coverageMap.get(row.suite);
+      if (existing) {
+        existing.edges.push(row.edge);
+      } else {
+        coverageMap.set(row.suite, { test_name: row.test_name, edges: [row.edge] });
+      }
     }
 
-    const coverages = [...coverageMap.entries()].map(([suite, edges]) => ({
+    const coverages = [...coverageMap.entries()].map(([suite, data]) => ({
       suite,
-      edges: [...new Set(edges)],
+      test_name: data.test_name,
+      edges: [...new Set(data.edges)],
     }));
 
     const result = core.selectByCoverage(coverages, [...changedEdges], count);

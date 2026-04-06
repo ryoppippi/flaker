@@ -1,4 +1,4 @@
-import type { FixtureConfig } from "./fixture-generator.js";
+import type { FixtureConfig } from "../core/loader.js";
 import type { EvalStrategyResult, SweepResult } from "./fixture-evaluator.js";
 
 export interface EvalFixtureReport {
@@ -20,7 +20,7 @@ export function formatEvalFixtureReport(report: EvalFixtureReport): string {
   const lines: string[] = [
     "# Evaluation Report",
     "",
-    `Config: tests=${c.testCount}, commits=${c.commitCount}, flaky=${pct(c.flakyRate)}, co-failure=${c.coFailureStrength}, sample=${c.samplePercentage}%`,
+    `Config: tests=${c.test_count}, commits=${c.commit_count}, flaky=${pct(c.flaky_rate)}, co-failure=${c.co_failure_strength}, sample=${c.sample_percentage}%`,
     "",
   ];
 
@@ -71,7 +71,7 @@ export function formatSweepReport(reports: EvalFixtureReport[]): string {
       : "N/A";
 
     lines.push(
-      `| ${pad(report.config.coFailureStrength.toFixed(2), 10)} | ${pad(pct(random.recall), 8)} | ${pad(pct(weighted.recall), 10)} | ${pad(pct(coFailure.recall), 10)} | ${pad(hybrid ? pct(hybrid.recall) : "N/A", 8)} | ${pad(gain, 6)} |`,
+      `| ${pad(report.config.co_failure_strength.toFixed(2), 10)} | ${pad(pct(random.recall), 8)} | ${pad(pct(weighted.recall), 10)} | ${pad(pct(coFailure.recall), 10)} | ${pad(hybrid ? pct(hybrid.recall) : "N/A", 8)} | ${pad(gain, 6)} |`,
     );
   }
 

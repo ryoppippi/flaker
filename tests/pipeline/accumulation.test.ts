@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
-import { generateFixture } from "../../src/cli/eval/fixture-generator.js";
+import { loadCore } from "../../src/cli/core/loader.js";
 import { loadFixtureIntoStore } from "../../src/cli/eval/fixture-loader.js";
 import { analyzeProject, recommendSampling } from "../../src/cli/commands/calibrate.js";
 import { trainModel } from "../../src/cli/commands/train.js";
@@ -26,15 +26,16 @@ describe("data accumulation pipeline", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("calibrate detects project characteristics from accumulated data", async () => {
-    const fixture = generateFixture({
-      testCount: 100,
-      commitCount: 50,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+  it("calibrate detects project characteristics from accumulated data", { timeout: 15000 }, async () => {
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 100,
+      commit_count: 50,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -51,18 +52,19 @@ describe("data accumulation pipeline", () => {
 
     const sampling = recommendSampling(profile);
     expect(sampling.strategy).toBe("hybrid");
-    expect(sampling.percentage).toBe(30); // 100 tests → 30%
+    expect(sampling.percentage).toBe(30);
   });
 
   it("train produces model from accumulated fixture data", async () => {
-    const fixture = generateFixture({
-      testCount: 50,
-      commitCount: 30,
-      flakyRate: 0.15,
-      coFailureStrength: 0.7,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 50,
+      commit_count: 30,
+      flaky_rate: 0.15,
+      co_failure_strength: 0.7,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 123,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -80,18 +82,19 @@ describe("data accumulation pipeline", () => {
     expect(result.positiveCount).toBeGreaterThan(0);
     expect(result.negativeCount).toBeGreaterThan(0);
     expect(result.ciRows).toBeGreaterThan(0);
-    expect(result.localRows).toBe(0); // fixture uses CI source
+    expect(result.localRows).toBe(0);
   });
 
   it("planSample uses accumulated data for weighted strategy", async () => {
-    const fixture = generateFixture({
-      testCount: 100,
-      commitCount: 50,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 100,
+      commit_count: 50,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -104,25 +107,23 @@ describe("data accumulation pipeline", () => {
     });
 
     expect(plan.sampled).toHaveLength(20);
-    // Flaky tests should be weighted higher
-    const flakyTests = fixture.tests.filter((t) => t.isFlaky).map((t) => t.suite);
+    const flakyTests = fixture.tests.filter((t) => t.is_flaky).map((t) => t.suite);
     const sampledFlakyCount = plan.sampled.filter((s) =>
       flakyTests.includes(s.suite),
     ).length;
-    // With 10% flaky rate and weighted strategy, flaky tests should be overrepresented
     expect(sampledFlakyCount).toBeGreaterThanOrEqual(2);
   });
 
   it("incremental accumulation increases data and changes calibration", async () => {
-    // Phase 1: small dataset
-    const fixture1 = generateFixture({
-      testCount: 50,
-      commitCount: 10,
-      flakyRate: 0.05,
-      coFailureStrength: 0.5,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture1 = core.generateFixture({
+      test_count: 50,
+      commit_count: 10,
+      flaky_rate: 0.05,
+      co_failure_strength: 0.5,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 1,
     });
     await loadFixtureIntoStore(store, fixture1);
@@ -133,18 +134,16 @@ describe("data accumulation pipeline", () => {
     });
     expect(profile1.commitCount).toBe(10);
 
-    // Phase 2: add more data (simulate passage of time)
-    const fixture2 = generateFixture({
-      testCount: 50,
-      commitCount: 20,
-      flakyRate: 0.05,
-      coFailureStrength: 0.5,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const fixture2 = core.generateFixture({
+      test_count: 50,
+      commit_count: 20,
+      flaky_rate: 0.05,
+      co_failure_strength: 0.5,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 2,
     });
-    // Load with offset IDs to avoid conflicts
     const baseTime = Date.now();
     for (let i = 0; i < fixture2.commits.length; i++) {
       const commit = fixture2.commits[i];
@@ -162,18 +161,18 @@ describe("data accumulation pipeline", () => {
       });
       await store.insertCommitChanges(
         `phase2-${commit.sha}`,
-        commit.changedFiles.map((f) => ({
-          filePath: f.filePath,
-          changeType: f.changeType,
+        commit.changed_files.map((f) => ({
+          filePath: f.file_path,
+          changeType: f.change_type,
           additions: 10,
           deletions: 5,
         })),
       );
       await store.insertTestResults(
-        commit.testResults.map((r) => ({
+        commit.test_results.map((r) => ({
           workflowRunId: runId,
           suite: r.suite,
-          testName: r.testName,
+          testName: r.test_name,
           status: r.status,
           durationMs: 100,
           retryCount: 0,
@@ -189,7 +188,7 @@ describe("data accumulation pipeline", () => {
       hasResolver: true,
       hasGBDTModel: false,
     });
-    expect(profile2.commitCount).toBe(30); // 10 + 20
+    expect(profile2.commitCount).toBe(30);
   });
 
   it("local vs CI source separation works with mixed data", async () => {
@@ -202,7 +201,6 @@ describe("data accumulation pipeline", () => {
         commitSha: sha, durationMs: 10, retryCount: 0, errorMessage: null, variant: null, createdAt: now,
       })));
 
-    // 2 CI runs to satisfy HAVING >= 2
     await mk(1, "ci-sha1", "ci", "push");
     await ins(1, "ci-sha1", [
       { name: "stable", status: "passed" },
@@ -216,7 +214,6 @@ describe("data accumulation pipeline", () => {
       { name: "flaky-local", status: "passed" },
     ]);
 
-    // 2 local runs
     await mk(3, "local-sha1", "local", "flaker-local-run");
     await ins(3, "local-sha1", [
       { name: "stable", status: "passed" },
@@ -230,32 +227,28 @@ describe("data accumulation pipeline", () => {
       { name: "flaky-local", status: "passed" },
     ]);
 
-    // calibrate should use CI data only
     const profile = await analyzeProject(store, { hasResolver: false, hasGBDTModel: false });
-    // CI: only 2 runs per test, below classification threshold (5)
-    // flakyRate is 0 because no test has >= 5 runs
     expect(profile.flakyRate).toBe(0);
 
-    // insights should show divergence
     const insights = await runInsights({ store });
-    expect(insights.summary.ciOnlyCount).toBe(1); // flaky-ci
-    expect(insights.summary.localOnlyCount).toBe(1); // flaky-local
+    expect(insights.summary.ciOnlyCount).toBe(1);
+    expect(insights.summary.localOnlyCount).toBe(1);
   });
 
   it("full pipeline: accumulate → calibrate → train → sample", { timeout: 30000 }, async () => {
-    const fixture = generateFixture({
-      testCount: 50,
-      commitCount: 30,
-      flakyRate: 0.1,
-      coFailureStrength: 0.7,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 50,
+      commit_count: 30,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.7,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
 
-    // 1. Calibrate
     const profile = await analyzeProject(store, {
       hasResolver: true,
       hasGBDTModel: false,
@@ -264,9 +257,8 @@ describe("data accumulation pipeline", () => {
     expect(profile.commitCount).toBe(30);
     const sampling = recommendSampling(profile);
     expect(sampling.strategy).toBe("hybrid");
-    expect(sampling.percentage).toBe(50); // 50 tests → 50%
+    expect(sampling.percentage).toBe(50);
 
-    // 2. Train
     const modelPath = join(tmpDir, "gbdt.json");
     const trainResult = await trainModel({
       store,
@@ -277,7 +269,6 @@ describe("data accumulation pipeline", () => {
     });
     expect(trainResult.trainingRows).toBeGreaterThan(50);
 
-    // 3. Sample with trained model (gbdt strategy)
     const gbdtPlan = await planSample({
       store,
       count: 20,
@@ -287,19 +278,22 @@ describe("data accumulation pipeline", () => {
     });
     expect(gbdtPlan.sampled).toHaveLength(20);
 
-    // 4. Sample with hybrid (the recommended strategy)
+    const lastCommitFiles = fixture.commits[fixture.commits.length - 1].changed_files.map((f) => f.file_path);
     const hybridPlan = await planSample({
       store,
       count: 20,
       mode: "hybrid",
       seed: 42,
-      changedFiles: fixture.commits[fixture.commits.length - 1].changedFiles.map((f) => f.filePath),
+      changedFiles: lastCommitFiles,
       resolver: {
         resolve(changed, allTests) {
           const affected = new Set<string>();
           for (const file of changed) {
-            for (const suite of fixture.fileDeps.get(file) ?? []) {
-              if (allTests.includes(suite)) affected.add(suite);
+            const dep = fixture.file_deps.find((d) => d.file === file);
+            if (dep) {
+              for (const suite of dep.suites) {
+                if (allTests.includes(suite)) affected.add(suite);
+              }
             }
           }
           return [...affected];
@@ -308,12 +302,11 @@ describe("data accumulation pipeline", () => {
     });
     expect(hybridPlan.sampled).toHaveLength(20);
 
-    // Hybrid should prioritize affected tests
-    const lastCommitFiles = fixture.commits[fixture.commits.length - 1].changedFiles.map((f) => f.filePath);
     const affectedSuites = new Set<string>();
     for (const file of lastCommitFiles) {
-      for (const suite of fixture.fileDeps.get(file) ?? []) {
-        affectedSuites.add(suite);
+      const dep = fixture.file_deps.find((d) => d.file === file);
+      if (dep) {
+        for (const suite of dep.suites) affectedSuites.add(suite);
       }
     }
     const affectedInSample = hybridPlan.sampled.filter((s) => affectedSuites.has(s.suite));

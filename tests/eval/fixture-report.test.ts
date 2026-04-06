@@ -1,18 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { formatEvalFixtureReport, type EvalFixtureReport } from "../../src/cli/eval/fixture-report.js";
 import type { EvalStrategyResult } from "../../src/cli/eval/fixture-evaluator.js";
-import type { FixtureConfig } from "../../src/cli/eval/fixture-generator.js";
+import type { FixtureConfig } from "../../src/cli/core/loader.js";
 
 describe("formatEvalFixtureReport", () => {
   it("formats a readable markdown table", () => {
     const config: FixtureConfig = {
-      testCount: 500,
-      commitCount: 100,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+      test_count: 500,
+      commit_count: 100,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     };
 

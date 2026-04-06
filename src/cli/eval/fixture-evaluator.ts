@@ -1,11 +1,10 @@
 import type { MetricStore } from "../storage/types.js";
-import type { FixtureData } from "./fixture-generator.js";
+import type { FixtureData } from "../core/loader.js";
 import type { DependencyResolver } from "../resolvers/types.js";
+import { loadCore, type MetriciCore } from "../core/loader.js";
 import { planSample } from "../commands/sample.js";
-import { selectByCoverage, type TestCoverageInput } from "./coverage-guided.js";
-import { trainGBDT, predictGBDT, extractFeatures, FLAKER_FEATURE_NAMES, type TrainingRow } from "./gbdt.js";
 
-function generateSyntheticCoverage(fixture: FixtureData): TestCoverageInput[] {
+function generateSyntheticCoverage(fixture: FixtureData): { suite: string; test_name: string; edges: string[] }[] {
   return fixture.tests.map((t) => {
     const moduleMatch = t.suite.match(/module_(\d+)/);
     const moduleIdx = moduleMatch ? parseInt(moduleMatch[1]) : 0;
@@ -13,15 +12,15 @@ function generateSyntheticCoverage(fixture: FixtureData): TestCoverageInput[] {
     for (let e = 0; e < 10; e++) {
       edges.push(`src/module_${moduleIdx}.ts:${e}`);
     }
-    return { suite: t.suite, edges };
+    return { suite: t.suite, test_name: t.test_name, edges };
   });
 }
 
-function getChangedEdges(changedFiles: { filePath: string }[]): string[] {
+function getChangedEdges(changedFiles: { file_path: string }[]): string[] {
   const edges: string[] = [];
   for (const f of changedFiles) {
     for (let e = 0; e < 10; e++) {
-      edges.push(`${f.filePath}:${e}`);
+      edges.push(`${f.file_path}:${e}`);
     }
   }
   return edges;
@@ -33,9 +32,9 @@ function createFixtureResolver(fixture: FixtureData): DependencyResolver {
       const allTestSet = new Set(allTestFiles);
       const affected = new Set<string>();
       for (const file of changedFiles) {
-        const deps = fixture.fileDeps.get(file);
+        const deps = fixture.file_deps.find((d) => d.file === file);
         if (deps) {
-          for (const suite of deps) {
+          for (const suite of deps.suites) {
             if (allTestSet.has(suite)) {
               affected.add(suite);
             }
@@ -77,6 +76,7 @@ export async function evaluateFixture(
   store: MetricStore,
   fixture: FixtureData,
 ): Promise<EvalStrategyResult[]> {
+  const core = await loadCore();
   const resolver = createFixtureResolver(fixture);
   const strategies = [
     { name: "random", mode: "random" as const, useCoFailure: false, useResolver: false },
@@ -85,11 +85,10 @@ export async function evaluateFixture(
     { name: "hybrid+co-failure", mode: "hybrid" as const, useCoFailure: true, useResolver: true },
   ];
 
-  // Use last 25% of commits as evaluation set
   const evalStart = Math.floor(fixture.commits.length * 0.75);
   const evalCommits = fixture.commits.slice(evalStart);
   const sampleCount = Math.round(
-    fixture.tests.length * (fixture.config.samplePercentage / 100),
+    fixture.tests.length * (fixture.config.sample_percentage / 100),
   );
 
   const results: EvalStrategyResult[] = [];
@@ -103,7 +102,7 @@ export async function evaluateFixture(
 
     for (const commit of evalCommits) {
       const changedFiles = strategy.useCoFailure
-        ? commit.changedFiles.map((f) => f.filePath)
+        ? commit.changed_files.map((f) => f.file_path)
         : undefined;
 
       const plan = await planSample({
@@ -117,14 +116,14 @@ export async function evaluateFixture(
 
       const sampledSuites = new Set(plan.sampled.map((t) => t.suite));
       sampledSuitesPerCommit.push(sampledSuites);
-      const actualFailures = commit.testResults.filter((r) => r.status === "failed");
+      const actualFailures = commit.test_results.filter((r) => r.status === "failed");
       const detectedInSample = actualFailures.filter((f) => sampledSuites.has(f.suite));
 
       totalFailures += actualFailures.length;
       detectedFailures += detectedInSample.length;
       totalSampled += plan.sampled.length;
       totalSampledFailures += plan.sampled.filter((t) =>
-        commit.testResults.some((r) => r.suite === t.suite && r.status === "failed"),
+        commit.test_results.some((r) => r.suite === t.suite && r.status === "failed"),
       ).length;
     }
 
@@ -133,7 +132,7 @@ export async function evaluateFixture(
     results.push({ strategy: strategy.name, ...metrics, holdoutFNR });
   }
 
-  // Coverage-guided strategy (separate path, doesn't use planSample)
+  // Coverage-guided strategy (via MoonBit core)
   {
     const coverages = generateSyntheticCoverage(fixture);
     let totalFailures = 0;
@@ -143,19 +142,19 @@ export async function evaluateFixture(
     const sampledSuitesPerCommit: Set<string>[] = [];
 
     for (const commit of evalCommits) {
-      const changedEdges = getChangedEdges(commit.changedFiles);
-      const cgResult = selectByCoverage(coverages, changedEdges, sampleCount);
+      const changedEdges = getChangedEdges(commit.changed_files);
+      const cgResult = core.selectByCoverage(coverages, changedEdges, sampleCount);
 
       const sampledSuites = new Set(cgResult.selected);
       sampledSuitesPerCommit.push(sampledSuites);
-      const actualFailures = commit.testResults.filter((r) => r.status === "failed");
+      const actualFailures = commit.test_results.filter((r) => r.status === "failed");
       const detectedInSample = actualFailures.filter((f) => sampledSuites.has(f.suite));
 
       totalFailures += actualFailures.length;
       detectedFailures += detectedInSample.length;
       totalSampled += cgResult.selected.length;
       totalSampledFailures += cgResult.selected.filter((suite) =>
-        commit.testResults.some((r) => r.suite === suite && r.status === "failed"),
+        commit.test_results.some((r) => r.suite === suite && r.status === "failed"),
       ).length;
     }
 
@@ -164,18 +163,17 @@ export async function evaluateFixture(
     results.push({ strategy: "coverage-guided", ...metrics, holdoutFNR });
   }
 
-  // GBDT strategy: train on first 75% of commits, predict on eval commits
+  // GBDT strategy (via MoonBit core): train on first 75% of commits, predict on eval commits
   {
     const trainCommits = fixture.commits.slice(0, evalStart);
 
-    // Build co-failure map from training data
     const fileTestFailures = new Map<string, Map<string, { co: number; fail: number }>>();
     for (const commit of trainCommits) {
-      const changedFiles = commit.changedFiles.map((f) => f.filePath);
+      const changedFiles = commit.changed_files.map((f) => f.file_path);
       for (const file of changedFiles) {
         if (!fileTestFailures.has(file)) fileTestFailures.set(file, new Map());
         const fileMap = fileTestFailures.get(file)!;
-        for (const tr of commit.testResults) {
+        for (const tr of commit.test_results) {
           const entry = fileMap.get(tr.suite) ?? { co: 0, fail: 0 };
           entry.co++;
           if (tr.status === "failed") entry.fail++;
@@ -184,10 +182,9 @@ export async function evaluateFixture(
       }
     }
 
-    // Build test-level aggregates from training data
     const testAgg = new Map<string, { runs: number; fails: number }>();
     for (const commit of trainCommits) {
-      for (const tr of commit.testResults) {
+      for (const tr of commit.test_results) {
         const agg = testAgg.get(tr.suite) ?? { runs: 0, fails: 0 };
         agg.runs++;
         if (tr.status === "failed") agg.fails++;
@@ -195,38 +192,31 @@ export async function evaluateFixture(
       }
     }
 
-    // Build training rows: for each (commit, test) in training data
-    const trainingData: TrainingRow[] = [];
+    const trainingData: { features: number[]; label: number }[] = [];
     for (const commit of trainCommits) {
-      const changedFiles = commit.changedFiles.map((f) => f.filePath);
-      for (const tr of commit.testResults) {
+      const changedFiles = commit.changed_files.map((f) => f.file_path);
+      for (const tr of commit.test_results) {
         const agg = testAgg.get(tr.suite) ?? { runs: 0, fails: 0 };
         const flakyRate = agg.runs > 0 ? (agg.fails / agg.runs) * 100 : 0;
         const maxCoFailRate = computeMaxCoFailRate(fileTestFailures, changedFiles, tr.suite);
 
         trainingData.push({
-          features: extractFeatures({
-            flaky_rate: flakyRate,
-            co_failure_boost: maxCoFailRate,
-            total_runs: agg.runs,
-            fail_count: agg.fails,
-            avg_duration_ms: 100,
-            previously_failed: agg.fails > 0,
-            is_new: agg.runs <= 1,
-          }),
+          features: [
+            flakyRate,
+            maxCoFailRate,
+            agg.runs,
+            agg.fails,
+            100,
+            agg.fails > 0 ? 1 : 0,
+            agg.runs <= 1 ? 1 : 0,
+          ],
           label: tr.status === "failed" ? 1 : 0,
         });
       }
     }
 
-    // Train model
-    const model = trainGBDT(trainingData, {
-      numTrees: 15,
-      learningRate: 0.2,
-      featureNames: FLAKER_FEATURE_NAMES,
-    });
+    const model = core.trainGBDT(trainingData, 15, 0.2);
 
-    // Evaluate on eval commits: rank tests by model score, select top N
     let totalFailures = 0;
     let detectedFailures = 0;
     let totalSampled = 0;
@@ -234,22 +224,22 @@ export async function evaluateFixture(
     const sampledSuitesPerCommit: Set<string>[] = [];
 
     for (const commit of evalCommits) {
-      const changedFiles = commit.changedFiles.map((f) => f.filePath);
+      const changedFiles = commit.changed_files.map((f) => f.file_path);
 
       const scored = fixture.tests.map((t) => {
         const agg = testAgg.get(t.suite) ?? { runs: 0, fails: 0 };
         const flakyRate = agg.runs > 0 ? (agg.fails / agg.runs) * 100 : 0;
         const maxCoFailRate = computeMaxCoFailRate(fileTestFailures, changedFiles, t.suite);
-        const features = extractFeatures({
-          flaky_rate: flakyRate,
-          co_failure_boost: maxCoFailRate,
-          total_runs: agg.runs,
-          fail_count: agg.fails,
-          avg_duration_ms: 100,
-          previously_failed: agg.fails > 0,
-          is_new: agg.runs <= 1,
-        });
-        return { suite: t.suite, score: predictGBDT(model, features) };
+        const features = [
+          flakyRate,
+          maxCoFailRate,
+          agg.runs,
+          agg.fails,
+          100,
+          agg.fails > 0 ? 1 : 0,
+          agg.runs <= 1 ? 1 : 0,
+        ];
+        return { suite: t.suite, score: core.predictGBDT(model, features) };
       });
 
       scored.sort((a, b) => b.score - a.score);
@@ -257,14 +247,14 @@ export async function evaluateFixture(
       const sampledSuites = new Set(selected.map((s) => s.suite));
       sampledSuitesPerCommit.push(sampledSuites);
 
-      const actualFailures = commit.testResults.filter((r) => r.status === "failed");
+      const actualFailures = commit.test_results.filter((r) => r.status === "failed");
       const detectedInSample = actualFailures.filter((f) => sampledSuites.has(f.suite));
 
       totalFailures += actualFailures.length;
       detectedFailures += detectedInSample.length;
       totalSampled += selected.length;
       totalSampledFailures += selected.filter((s) =>
-        commit.testResults.some((r) => r.suite === s.suite && r.status === "failed"),
+        commit.test_results.some((r) => r.suite === s.suite && r.status === "failed"),
       ).length;
     }
 
@@ -277,27 +267,26 @@ export async function evaluateFixture(
 }
 
 export async function runSweep(
-  baseConfig: import("./fixture-generator.js").FixtureConfig,
+  baseConfig: import("../core/loader.js").FixtureConfig,
   sweep: SweepConfig,
   createStore: () => Promise<{ store: MetricStore; close: () => Promise<void> }>,
 ): Promise<SweepResult[]> {
-  const testCounts = sweep.testCounts ?? [baseConfig.testCount];
-  const flakyRates = sweep.flakyRates ?? [baseConfig.flakyRate];
-  const coFailureStrengths = sweep.coFailureStrengths ?? [baseConfig.coFailureStrength];
-  const samplePercentages = sweep.samplePercentages ?? [baseConfig.samplePercentage];
-
-  const { generateFixture } = await import("./fixture-generator.js");
-  const { loadFixtureIntoStore } = await import("./fixture-loader.js");
+  const core = await loadCore();
+  const testCounts = sweep.testCounts ?? [baseConfig.test_count];
+  const flakyRates = sweep.flakyRates ?? [baseConfig.flaky_rate];
+  const coFailureStrengths = sweep.coFailureStrengths ?? [baseConfig.co_failure_strength];
+  const samplePercentages = sweep.samplePercentages ?? [baseConfig.sample_percentage];
 
   const results: SweepResult[] = [];
   for (const testCount of testCounts) {
     for (const flakyRate of flakyRates) {
       for (const coFailureStrength of coFailureStrengths) {
         for (const samplePercentage of samplePercentages) {
-          const config = { ...baseConfig, testCount, flakyRate, coFailureStrength, samplePercentage };
+          const config = { ...baseConfig, test_count: testCount, flaky_rate: flakyRate, co_failure_strength: coFailureStrength, sample_percentage: samplePercentage };
           const { store, close } = await createStore();
           try {
-            const fixture = generateFixture(config);
+            const fixture = core.generateFixture(config);
+            const { loadFixtureIntoStore } = await import("./fixture-loader.js");
             await loadFixtureIntoStore(store, fixture);
             const evalResults = await evaluateFixture(store, fixture);
             results.push({
@@ -355,10 +344,9 @@ function computeHoldoutFNR(
     const sampledSuites = sampledSuitesPerCommit[i];
     const skipped = fixture.tests.filter((t) => !sampledSuites.has(t.suite));
     const holdoutCount = Math.max(1, Math.round(skipped.length * holdoutRatio));
-    // Deterministic selection (take first N of skipped)
     const holdoutSuites = new Set(skipped.slice(0, holdoutCount).map((t) => t.suite));
 
-    for (const tr of commit.testResults) {
+    for (const tr of commit.test_results) {
       if (holdoutSuites.has(tr.suite)) {
         holdoutTotal++;
         if (tr.status === "failed") holdoutFailures++;

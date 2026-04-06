@@ -126,7 +126,7 @@ interface ConfigCheckCoreOutput {
 }
 
 interface ConfigCheckCoreExports {
-  run_config_check_json?: (
+  run_config_check_json: (
     listedTestsJson: string,
     discoveredSpecsJson: string,
     taskDefinitionsJson: string,
@@ -135,159 +135,6 @@ interface ConfigCheckCoreExports {
 
 function normalizePath(path: string): string {
   return path.replaceAll("\\", "/");
-}
-
-function compareNullable(a: string | null, b: string | null): number {
-  return (a ?? "").localeCompare(b ?? "");
-}
-
-function sortClaims(claims: OwnershipClaim[]): OwnershipClaim[] {
-  return [...claims].sort((a, b) => {
-    const byTaskId = a.taskId.localeCompare(b.taskId);
-    if (byTaskId !== 0) return byTaskId;
-    return compareNullable(a.filter, b.filter);
-  });
-}
-
-function claimKey(claim: { taskId: string; filter: string | null }): string {
-  return `${claim.taskId}\0${claim.filter ?? ""}`;
-}
-
-function classifyOwnership(claims: OwnershipClaim[]): OwnershipEntry["kind"] {
-  if (claims.length <= 1) return "owned";
-
-  const filters = new Set<string>();
-  for (const claim of claims) {
-    if (claim.filter == null) {
-      return "duplicate";
-    }
-
-    if (filters.has(claim.filter)) {
-      return "duplicate";
-    }
-    filters.add(claim.filter);
-  }
-
-  return "split";
-}
-
-function runConfigCheckFallback(opts: RunConfigCheckOpts): ConfigCheckReport {
-  const ownershipIndex = new Map<string, Map<string, OwnershipClaim>>();
-  const taskSpecs = new Map<string, Set<string>>();
-  const taskFilters = new Map<string, Set<string>>();
-  const taskTestCounts = new Map<string, number>();
-  const taskDefinitions = new Map(
-    (opts.taskDefinitions ?? []).map((task) => [task.taskId, task]),
-  );
-
-  for (const test of opts.listedTests) {
-    const spec = normalizePath(test.suite);
-    const taskId = test.taskId ?? spec;
-    const filter = test.filter ?? null;
-
-    let claimsByKey = ownershipIndex.get(spec);
-    if (!claimsByKey) {
-      claimsByKey = new Map<string, OwnershipClaim>();
-      ownershipIndex.set(spec, claimsByKey);
-    }
-
-    const key = claimKey({ taskId, filter });
-    const existingClaim = claimsByKey.get(key);
-    if (existingClaim) {
-      existingClaim.testCount += 1;
-    } else {
-      claimsByKey.set(key, {
-        taskId,
-        filter,
-        testCount: 1,
-      });
-    }
-
-    let specs = taskSpecs.get(taskId);
-    if (!specs) {
-      specs = new Set<string>();
-      taskSpecs.set(taskId, specs);
-    }
-    specs.add(spec);
-
-    let filters = taskFilters.get(taskId);
-    if (!filters) {
-      filters = new Set<string>();
-      taskFilters.set(taskId, filters);
-    }
-    if (filter != null) {
-      filters.add(filter);
-    }
-
-    taskTestCounts.set(taskId, (taskTestCounts.get(taskId) ?? 0) + 1);
-  }
-
-  const ownership = [...ownershipIndex.entries()]
-    .map(([spec, claimsByKey]) => {
-      const owners = sortClaims([...claimsByKey.values()]);
-      return {
-        spec,
-        kind: classifyOwnership(owners),
-        owners,
-      } satisfies OwnershipEntry;
-    })
-    .sort((a, b) => a.spec.localeCompare(b.spec));
-
-  const errors = ownership
-    .filter((entry) => entry.kind === "duplicate")
-    .map((entry) => ({
-      code: "duplicate-ownership",
-      spec: entry.spec,
-      detail: entry.owners
-        .map((owner) => `${owner.taskId}${owner.filter ? ` (${owner.filter})` : ""}`)
-        .join(", "),
-    }) satisfies ConfigCheckIssue);
-
-  const managedSpecs = new Set(ownership.map((entry) => entry.spec));
-  const warnings = [...new Set(opts.discoveredSpecs.map(normalizePath))]
-    .filter((spec) => !managedSpecs.has(spec))
-    .sort((a, b) => a.localeCompare(b))
-    .map((spec) => ({
-      code: "unmanaged-spec",
-      spec,
-      detail: "Spec exists on disk but is not claimed by any task",
-    }) satisfies ConfigCheckIssue);
-
-  const taskIds = new Set<string>([
-    ...taskTestCounts.keys(),
-    ...taskDefinitions.keys(),
-  ]);
-  const tasks = [...taskIds]
-    .map((taskId) => {
-      const definition = taskDefinitions.get(taskId);
-      return {
-        taskId,
-        node: definition?.node ?? null,
-        specCount: taskSpecs.get(taskId)?.size ?? 0,
-        testCount: taskTestCounts.get(taskId) ?? 0,
-        filterCount: taskFilters.get(taskId)?.size ?? 0,
-        needsCount: definition?.needs.length ?? 0,
-        srcCount: definition?.srcs.length ?? 0,
-      } satisfies TaskSummary;
-    })
-    .sort((a, b) => a.taskId.localeCompare(b.taskId));
-
-  return {
-    summary: {
-      taskCount: tasks.length,
-      specCount: ownership.length,
-      duplicateOwnershipCount: errors.length,
-      splitOwnershipCount: ownership.filter((entry) => entry.kind === "split")
-        .length,
-      unmanagedSpecCount: warnings.length,
-      errorCount: errors.length,
-      warningCount: warnings.length,
-    },
-    ownership,
-    tasks,
-    errors,
-    warnings,
-  };
 }
 
 function toCoreListedTest(test: TestId): ConfigCheckListedTestInput {
@@ -373,31 +220,22 @@ function fromCoreReport(output: ConfigCheckCoreOutput): ConfigCheckReport {
   };
 }
 
-async function loadConfigCheckRunner(): Promise<
-  (opts: RunConfigCheckOpts) => ConfigCheckReport
-> {
-  try {
-    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ConfigCheckCoreExports;
-    if (typeof mod.run_config_check_json === "function") {
-      return (opts) =>
-        fromCoreReport(
-          JSON.parse(
-            mod.run_config_check_json!(
-              JSON.stringify(opts.listedTests.map(toCoreListedTest)),
-              JSON.stringify(opts.discoveredSpecs.map(normalizePath)),
-              JSON.stringify((opts.taskDefinitions ?? []).map(toCoreTaskDefinition)),
-            ),
-          ) as ConfigCheckCoreOutput,
-        );
-    }
-  } catch {
-    // Fall back to the TypeScript implementation when the MoonBit build is unavailable.
+const runConfigCheckImpl = await (async (): Promise<(opts: RunConfigCheckOpts) => ConfigCheckReport> => {
+  const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ConfigCheckCoreExports;
+  if (typeof mod.run_config_check_json !== "function") {
+    throw new Error("MoonBit config_check bridge is missing. Run 'moon build --target js' first.");
   }
-
-  return runConfigCheckFallback;
-}
-
-const runConfigCheckImpl = await loadConfigCheckRunner();
+  return (opts) =>
+    fromCoreReport(
+      JSON.parse(
+        mod.run_config_check_json(
+          JSON.stringify(opts.listedTests.map(toCoreListedTest)),
+          JSON.stringify(opts.discoveredSpecs.map(normalizePath)),
+          JSON.stringify((opts.taskDefinitions ?? []).map(toCoreTaskDefinition)),
+        ),
+      ) as ConfigCheckCoreOutput,
+    );
+})();
 
 export function runConfigCheck(opts: RunConfigCheckOpts): ConfigCheckReport {
   return runConfigCheckImpl(opts);

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
-import { generateFixture } from "../../src/cli/eval/fixture-generator.js";
+import { loadCore } from "../../src/cli/core/loader.js";
 import { loadFixtureIntoStore } from "../../src/cli/eval/fixture-loader.js";
-import { evaluateFixture, type EvalStrategyResult } from "../../src/cli/eval/fixture-evaluator.js";
+import { evaluateFixture } from "../../src/cli/eval/fixture-evaluator.js";
 
 describe("evaluateFixture", () => {
   let store: DuckDBStore;
@@ -17,14 +17,15 @@ describe("evaluateFixture", () => {
   });
 
   it("returns results for all strategies", async () => {
-    const fixture = generateFixture({
-      testCount: 30,
-      commitCount: 20,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 30,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 30,
+      commit_count: 20,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 30,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -42,14 +43,15 @@ describe("evaluateFixture", () => {
   });
 
   it("all strategies have valid metrics", async () => {
-    const fixture = generateFixture({
-      testCount: 30,
-      commitCount: 20,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 30,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 30,
+      commit_count: 20,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 30,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -66,14 +68,15 @@ describe("evaluateFixture", () => {
   });
 
   it("co-failure strategy outperforms random when correlation is strong", async () => {
-    const fixture = generateFixture({
-      testCount: 50,
-      commitCount: 40,
-      flakyRate: 0.05,
-      coFailureStrength: 1.0,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 50,
+      commit_count: 40,
+      flaky_rate: 0.05,
+      co_failure_strength: 1.0,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -86,14 +89,15 @@ describe("evaluateFixture", () => {
   });
 
   it("hybrid+co-failure outperforms all other strategies", async () => {
-    const fixture = generateFixture({
-      testCount: 50,
-      commitCount: 40,
-      flakyRate: 0.05,
-      coFailureStrength: 1.0,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 20,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 50,
+      commit_count: 40,
+      flaky_rate: 0.05,
+      co_failure_strength: 1.0,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 20,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
@@ -102,8 +106,6 @@ describe("evaluateFixture", () => {
     const random = results.find((r) => r.strategy === "random")!;
     const hybrid = results.find((r) => r.strategy === "hybrid+co-failure")!;
 
-    // Hybrid uses affected (resolver) + co-failure priority + weighted
-    // Should significantly outperform random
     expect(hybrid.recall).toBeGreaterThan(random.recall);
   });
 });

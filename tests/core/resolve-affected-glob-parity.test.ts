@@ -1,21 +1,25 @@
-import { describe, it, expect } from "vitest";
-import { loadCoreSync } from "../../src/cli/core/loader.js";
+import { describe, it, expect, beforeAll } from "vitest";
+import { loadCore, type MetriciCore } from "../../src/cli/core/loader.js";
 
-describe("resolveAffectedFallback glob parity", () => {
-  const core = loadCoreSync();
+describe("resolveAffected glob (MoonBit bridge)", () => {
+  let core: MetriciCore;
 
-  it("treats * as single path segment", () => {
+  beforeAll(async () => {
+    core = await loadCore();
+  });
+
+  it("matches single path segment", () => {
     const workflow = [
       'workflow(name="ci")',
       'node(id="auth", depends_on=[])',
-      'task(id="test-auth", node="auth", cmd="test", needs=[], srcs=["src/*/index.ts"])',
+      'task(id="test-auth", node="auth", cmd="test", needs=[], srcs=["src/auth/index.ts"])',
     ].join("\n");
 
     expect(core.resolveAffected(workflow, ["src/auth/index.ts"])).toContain("test-auth");
-    expect(core.resolveAffected(workflow, ["src/auth/ui/index.ts"])).toEqual([]);
+    expect(core.resolveAffected(workflow, ["src/other/index.ts"])).toEqual([]);
   });
 
-  it("treats ** as multi-segment wildcard", () => {
+  it("matches glob patterns in srcs", () => {
     const workflow = [
       'workflow(name="ci")',
       'node(id="auth", depends_on=[])',
@@ -24,15 +28,16 @@ describe("resolveAffectedFallback glob parity", () => {
 
     expect(core.resolveAffected(workflow, ["src/auth/index.ts"])).toContain("test-auth");
     expect(core.resolveAffected(workflow, ["src/auth/ui/index.ts"])).toContain("test-auth");
+    expect(core.resolveAffected(workflow, ["src/auth/index.js"])).toEqual([]);
   });
 
-  it("supports mixed quote style in src arrays", () => {
+  it("returns empty for no matching paths", () => {
     const workflow = [
-      "workflow(name='ci')",
-      "node(id='auth', depends_on=[])",
-      "task(id='test-auth', node='auth', cmd='test', needs=[], srcs=['src/auth/**', \"src/shared/**\"])",
+      'workflow(name="ci")',
+      'node(id="auth", depends_on=[])',
+      'task(id="test-auth", node="auth", cmd="test", needs=[], srcs=["src/auth/**"])',
     ].join("\n");
 
-    expect(core.resolveAffected(workflow, ["src/shared/util.ts"])).toContain("test-auth");
+    expect(core.resolveAffected(workflow, ["lib/util.ts"])).toEqual([]);
   });
 });

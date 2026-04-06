@@ -181,48 +181,9 @@ interface ReportSummaryOutput {
 }
 
 interface ReportDiffCoreExports {
-  summarize_report_json?: (testsJson: string) => string;
-  classify_report_diff_json?: (inputsJson: string) => string;
-  aggregate_report_json?: (shardsJson: string) => string;
-}
-
-function classifyReportDiffFallback(
-  inputs: ReportDiffStatusInput[],
-): ReportDiffBuckets {
-  const buckets: ReportDiffBuckets = {
-    new_failures: [],
-    new_flaky: [],
-    resolved_failures: [],
-    resolved_flaky: [],
-    persistent_flaky: [],
-  };
-
-  for (const input of inputs) {
-    const baseStatus = input.base_status;
-    const headStatus = input.head_status;
-
-    if (headStatus === "failed" && baseStatus !== "failed") {
-      buckets.new_failures.push(input.test_id);
-    }
-
-    if (headStatus === "flaky") {
-      if (baseStatus === "flaky") {
-        buckets.persistent_flaky.push(input.test_id);
-      } else if (baseStatus !== "failed") {
-        buckets.new_flaky.push(input.test_id);
-      }
-    }
-
-    if (baseStatus === "failed" && headStatus !== "failed" && headStatus !== "") {
-      buckets.resolved_failures.push(input.test_id);
-    }
-
-    if (baseStatus === "flaky" && headStatus !== "flaky" && headStatus !== "") {
-      buckets.resolved_flaky.push(input.test_id);
-    }
-  }
-
-  return buckets;
+  summarize_report_json: (testsJson: string) => string;
+  classify_report_diff_json: (inputsJson: string) => string;
+  aggregate_report_json: (shardsJson: string) => string;
 }
 
 function toCoreTotals(totals: ReportTotals): ReportTotalsInput {
@@ -249,148 +210,26 @@ function fromCoreTotals(totals: ReportTotalsInput): ReportTotals {
   };
 }
 
-function aggregateReportFallback(
-  shards: ReportAggregateShardInput[],
-): ReportAggregateOutput {
-  const totals: ReportTotalsInput = {
-    total: 0,
-    passed: 0,
-    failed: 0,
-    flaky: 0,
-    skipped: 0,
-    retries: 0,
-    duration_ms: 0,
-  };
-  const unstableIndex = new Map<
-    string,
-    { shardSet: Set<string>; statusSet: Set<string> }
-  >();
-
-  for (const shard of shards) {
-    totals.total += shard.totals.total;
-    totals.passed += shard.totals.passed;
-    totals.failed += shard.totals.failed;
-    totals.flaky += shard.totals.flaky;
-    totals.skipped += shard.totals.skipped;
-    totals.retries += shard.totals.retries;
-    totals.duration_ms += shard.totals.duration_ms;
-
-    for (const unstable of shard.unstable) {
-      const existing = unstableIndex.get(unstable.test_id);
-      if (existing) {
-        existing.shardSet.add(shard.shard_id);
-        existing.statusSet.add(unstable.status);
-        continue;
-      }
-
-      unstableIndex.set(unstable.test_id, {
-        shardSet: new Set([shard.shard_id]),
-        statusSet: new Set([unstable.status]),
-      });
-    }
+const reportBridge = await (async (): Promise<ReportDiffCoreExports> => {
+  const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as Partial<ReportDiffCoreExports>;
+  if (
+    typeof mod.summarize_report_json === "function" &&
+    typeof mod.classify_report_diff_json === "function" &&
+    typeof mod.aggregate_report_json === "function"
+  ) {
+    return mod as ReportDiffCoreExports;
   }
+  throw new Error("MoonBit report bridge is missing. Run 'moon build --target js' first.");
+})();
 
-  return {
-    shard_count: shards.length,
-    unstable_count: unstableIndex.size,
-    totals,
-    unstable: [...unstableIndex.entries()].map(([testId, entry]) => ({
-      test_id: testId,
-      shard_ids: [...entry.shardSet].sort(),
-      statuses: [...entry.statusSet].sort(),
-    })),
-  };
-}
+const classifyReportDiff = (inputs: ReportDiffStatusInput[]): ReportDiffBuckets =>
+  JSON.parse(reportBridge.classify_report_diff_json(JSON.stringify(inputs)));
 
-function summarizeReportFallback(
-  tests: ReportSummaryTestInput[],
-): ReportSummaryOutput {
-  const totals = emptyTotals();
-  const fileTotals = new Map<string, ReportTotals>();
-  const unstableTestIds: string[] = [];
+const summarizeReport = (tests: ReportSummaryTestInput[]): ReportSummaryOutput =>
+  JSON.parse(reportBridge.summarize_report_json(JSON.stringify(tests)));
 
-  for (const test of tests) {
-    const entry = {
-      status: test.status as ReportTestSummary["status"],
-      retryCount: test.retry_count,
-      durationMs: test.duration_ms,
-    };
-    addToTotals(totals, entry);
-    const existing = fileTotals.get(test.suite);
-    if (existing) {
-      addToTotals(existing, entry);
-    } else {
-      const next = emptyTotals();
-      addToTotals(next, entry);
-      fileTotals.set(test.suite, next);
-    }
-    if (test.status === "failed" || test.status === "flaky") {
-      unstableTestIds.push(test.test_id);
-    }
-  }
-
-  return {
-    totals: toCoreTotals(totals),
-    file_totals: [...fileTotals.entries()]
-      .map(([suite, summaryTotals]) => ({
-        suite,
-        totals: toCoreTotals(summaryTotals),
-      }))
-      .sort((a, b) => a.suite.localeCompare(b.suite)),
-    unstable_test_ids: unstableTestIds,
-  };
-}
-
-async function loadReportDiffClassifier(): Promise<
-  (inputs: ReportDiffStatusInput[]) => ReportDiffBuckets
-> {
-  try {
-    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
-    if (typeof mod.classify_report_diff_json === "function") {
-      return (inputs) =>
-        JSON.parse(mod.classify_report_diff_json!(JSON.stringify(inputs))) as ReportDiffBuckets;
-    }
-  } catch {
-    // MoonBit JS build not available, fall back to TS implementation.
-  }
-  return classifyReportDiffFallback;
-}
-
-const classifyReportDiff = await loadReportDiffClassifier();
-
-async function loadReportSummaryReducer(): Promise<
-  (tests: ReportSummaryTestInput[]) => ReportSummaryOutput
-> {
-  try {
-    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
-    if (typeof mod.summarize_report_json === "function") {
-      return (tests) =>
-        JSON.parse(mod.summarize_report_json!(JSON.stringify(tests))) as ReportSummaryOutput;
-    }
-  } catch {
-    // MoonBit JS build not available, fall back to TS implementation.
-  }
-  return summarizeReportFallback;
-}
-
-const summarizeReport = await loadReportSummaryReducer();
-
-async function loadReportAggregateReducer(): Promise<
-  (shards: ReportAggregateShardInput[]) => ReportAggregateOutput
-> {
-  try {
-    const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as ReportDiffCoreExports;
-    if (typeof mod.aggregate_report_json === "function") {
-      return (shards) =>
-        JSON.parse(mod.aggregate_report_json!(JSON.stringify(shards))) as ReportAggregateOutput;
-    }
-  } catch {
-    // MoonBit JS build not available, fall back to TS implementation.
-  }
-  return aggregateReportFallback;
-}
-
-const aggregateReport = await loadReportAggregateReducer();
+const aggregateReport = (shards: ReportAggregateShardInput[]): ReportAggregateOutput =>
+  JSON.parse(reportBridge.aggregate_report_json(JSON.stringify(shards)));
 
 function emptyTotals(): ReportTotals {
   return {

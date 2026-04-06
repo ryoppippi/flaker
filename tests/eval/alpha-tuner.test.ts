@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
-import { generateFixture } from "../../src/cli/eval/fixture-generator.js";
+import { loadCore } from "../../src/cli/core/loader.js";
 import { loadFixtureIntoStore } from "../../src/cli/eval/fixture-loader.js";
 import {
   tuneAlpha,
@@ -30,29 +30,29 @@ describe("alpha tuner", () => {
   });
 
   it("tunes alpha over grid of values", async () => {
-    const fixture = generateFixture({
-      testCount: 30,
-      commitCount: 20,
-      flakyRate: 0.1,
-      coFailureStrength: 0.8,
-      filesPerCommit: 2,
-      testsPerFile: 5,
-      samplePercentage: 30,
+    const core = await loadCore();
+    const fixture = core.generateFixture({
+      test_count: 30,
+      commit_count: 20,
+      flaky_rate: 0.1,
+      co_failure_strength: 0.8,
+      files_per_commit: 2,
+      tests_per_file: 5,
+      sample_percentage: 30,
       seed: 42,
     });
     await loadFixtureIntoStore(store, fixture);
 
-    // Build ground truth from last 25% of commits
     const evalStart = Math.floor(fixture.commits.length * 0.75);
     const evalCommits = fixture.commits.slice(evalStart);
 
     const changedFilesPerCommit = new Map<string, string[]>();
     const groundTruth = new Map<string, Set<string>>();
     for (const commit of evalCommits) {
-      changedFilesPerCommit.set(commit.sha, commit.changedFiles.map((f) => f.filePath));
+      changedFilesPerCommit.set(commit.sha, commit.changed_files.map((f) => f.file_path));
       groundTruth.set(
         commit.sha,
-        new Set(commit.testResults.filter((r) => r.status === "failed").map((r) => r.suite)),
+        new Set(commit.test_results.filter((r) => r.status === "failed").map((r) => r.suite)),
       );
     }
 

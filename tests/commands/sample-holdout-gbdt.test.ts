@@ -5,7 +5,8 @@ import { planSample } from "../../src/cli/commands/sample.js";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { trainGBDT, FLAKER_FEATURE_NAMES } from "../../src/cli/eval/gbdt.js";
+import { loadCore } from "../../src/cli/core/loader.js";
+import { FLAKER_FEATURE_NAMES } from "../../src/cli/eval/gbdt.js";
 
 describe("holdout sampling", () => {
   let store: DuckDBStore;
@@ -169,6 +170,7 @@ describe("gbdt sampling strategy", () => {
     await store.insertTestResults(results);
 
     // Train and save a model
+    const core = await loadCore();
     const trainingData = [
       // Flaky patterns
       ...Array.from({ length: 30 }, () => ({
@@ -181,17 +183,17 @@ describe("gbdt sampling strategy", () => {
         label: 0,
       })),
     ];
-    const model = trainGBDT(trainingData, {
-      numTrees: 10,
-      learningRate: 0.2,
-      featureNames: FLAKER_FEATURE_NAMES,
-    });
+    const model = core.trainGBDT(trainingData, 10, 0.2);
 
     modelDir = resolve(tmpdir(), `flaker-test-gbdt-${Date.now()}`);
     mkdirSync(modelDir, { recursive: true });
     writeFileSync(
       resolve(modelDir, "gbdt.json"),
-      JSON.stringify(model),
+      JSON.stringify({
+        ...model as Record<string, unknown>,
+        featureNames: FLAKER_FEATURE_NAMES,
+        feature_names: FLAKER_FEATURE_NAMES,
+      }),
     );
   });
 

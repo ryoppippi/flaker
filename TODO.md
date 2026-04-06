@@ -399,8 +399,8 @@ coverage-guided fuzzing の知見をテスト選択に応用する。
 - [x] **Co-failure ブースト（Stage 1）**
   - 強相関シナリオ: co-failure=0.9 で hybrid 96-100% recall → ✅ 大幅な向上確認
   - 弱相関シナリオ: co-failure=0.3 でも hybrid 91-100% recall → ✅ ノイズ耐性あり
-  - α 自動チューニング: 未実装（現状は固定値で十分な性能）
-  - co-failure window 感度分析: 未実施
+  - α 自動チューニング: ✅ `flaker tune` 実装済み（grid search で F1 最大化、tuning.json に保存）
+  - co-failure window 感度分析: ✅ `flaker eval-co-failure-window` 実装済み
 
 - [x] **Coverage-guided サンプリング**
   - greedy set cover が実カバレッジデータで冗長排除できるか → ✅ select_by_coverage 実装済み
