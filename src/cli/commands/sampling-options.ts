@@ -4,6 +4,7 @@ export const SAMPLING_MODES = [
   "affected",
   "hybrid",
   "gbdt",
+  "coverage-guided",
   "full",
 ] as const;
 

@@ -2,6 +2,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "smol-toml";
 
+export interface CoverageConfig {
+  format: string; // istanbul | v8 | playwright
+  input: string; // path to coverage JSON or directory
+  granularity?: string; // statement (default) | function | branch
+}
+
 export interface SamplingConfig {
   strategy: string;
   percentage?: number;
@@ -45,6 +51,7 @@ export interface FlakerConfig {
   affected: { resolver: string; config: string };
   quarantine: { auto: boolean; flaky_rate_threshold: number; min_runs: number };
   flaky: { window_days: number; detection_threshold: number };
+  coverage?: CoverageConfig;
   sampling?: SamplingConfig;
   profile?: Record<string, ProfileConfig>;
 }

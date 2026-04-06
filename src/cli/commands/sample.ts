@@ -241,6 +241,64 @@ async function selectByStrategy(
     };
   }
 
+  if (opts.mode === "coverage-guided") {
+    if (!opts.changedFiles || opts.changedFiles.length === 0) {
+      throw new Error("coverage-guided mode requires changedFiles");
+    }
+    const coverageRows = await opts.store.raw<{
+      test_id: string;
+      suite: string;
+      test_name: string;
+      edge: string;
+    }>("SELECT test_id, suite, test_name, edge FROM test_coverage");
+
+    if (coverageRows.length === 0) {
+      effectiveMode = "weighted";
+      return {
+        sampled: core.sampleWeighted(allTests, count, seed),
+        effectiveMode,
+      };
+    }
+
+    // Build changed edges: edges whose file path matches any changed file
+    const changedFileSet = new Set(opts.changedFiles);
+    const changedEdges = new Set<string>();
+    for (const row of coverageRows) {
+      const filePart = row.edge.split(":")[0];
+      if (changedFileSet.has(filePart)) {
+        changedEdges.add(row.edge);
+      }
+    }
+
+    if (changedEdges.size === 0) {
+      effectiveMode = "weighted";
+      return {
+        sampled: core.sampleWeighted(allTests, count, seed),
+        effectiveMode,
+      };
+    }
+
+    // Build coverage map: suite -> edges
+    const coverageMap = new Map<string, string[]>();
+    for (const row of coverageRows) {
+      const existing = coverageMap.get(row.suite) ?? [];
+      existing.push(row.edge);
+      coverageMap.set(row.suite, existing);
+    }
+
+    const coverages = [...coverageMap.entries()].map(([suite, edges]) => ({
+      suite,
+      edges: [...new Set(edges)],
+    }));
+
+    const result = core.selectByCoverage(coverages, [...changedEdges], count);
+    const selectedSuites = new Set(result.selected);
+    return {
+      sampled: allTests.filter((t) => selectedSuites.has(t.suite)),
+      effectiveMode,
+    };
+  }
+
   if (opts.mode === "full") {
     return {
       sampled: allTests,

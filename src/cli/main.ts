@@ -1334,6 +1334,77 @@ program
     }
   });
 
+// --- collect-coverage ---
+program
+  .command("collect-coverage")
+  .description("Collect test coverage data and store edges in DuckDB")
+  .requiredOption("--format <type>", "Coverage format: istanbul, v8, playwright")
+  .requiredOption("--input <path>", "Path to coverage JSON file or directory")
+  .option("--test-id-prefix <prefix>", "Prefix for test IDs (e.g. commit SHA)")
+  .action(async (opts: { format: string; input: string; testIdPrefix?: string }) => {
+    const config = loadConfig(process.cwd());
+    const store = new DuckDBStore(resolve(config.storage.path));
+    await store.initialize();
+    try {
+      const { collectCoverage, formatCollectCoverageSummary } = await import("./commands/collect-coverage.js");
+      const result = await collectCoverage({
+        store,
+        format: opts.format,
+        input: opts.input,
+        testIdPrefix: opts.testIdPrefix,
+      });
+      console.log(formatCollectCoverageSummary(result));
+    } catch (e: unknown) {
+      console.error(`Error: ${e instanceof Error ? e.message : e}`);
+      process.exit(1);
+    } finally {
+      await store.close();
+    }
+  });
+
+// --- diagnose ---
+program
+  .command("diagnose")
+  .description("Diagnose flaky test causes by applying mutations (order, repeat, env, isolate)")
+  .requiredOption("--suite <suite>", "Test suite file")
+  .requiredOption("--test <name>", "Test name")
+  .option("--runs <n>", "Number of runs per mutation", "3")
+  .option("--mutations <list>", "Comma-separated mutation strategies: order,repeat,env,isolate,all", "all")
+  .option("--json", "Output JSON report")
+  .action(async (opts: { suite: string; test: string; runs: string; mutations: string; json?: boolean }) => {
+    const config = loadConfig(process.cwd());
+    const { createRunner } = await import("./runners/index.js");
+    const runner = createRunner({
+      type: config.runner.type,
+      command: config.runner.command,
+      execute: config.runner.execute,
+      list: config.runner.list,
+    });
+
+    const mutations = opts.mutations.split(",").map((m) => m.trim());
+
+    try {
+      const { runDiagnose, formatDiagnoseReport } = await import("./commands/diagnose.js");
+      const report = await runDiagnose({
+        runner,
+        suite: opts.suite,
+        testName: opts.test,
+        runs: parseInt(opts.runs, 10),
+        mutations,
+        cwd: process.cwd(),
+      });
+
+      if (opts.json) {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        console.log(formatDiagnoseReport(report));
+      }
+    } catch (e: unknown) {
+      console.error(`Error: ${e instanceof Error ? e.message : e}`);
+      process.exit(1);
+    }
+  });
+
 // --- self-eval ---
 program
   .command("self-eval")
