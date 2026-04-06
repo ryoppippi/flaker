@@ -153,6 +153,56 @@ command = "pnpm exec vitest run"
 strategy = "hybrid"
 percentage = 30
 holdout_ratio = 0.1
+
+[profile.daily]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
+```
+
+## 実行プロファイル
+
+flaker は実行環境に応じて自動的にテスト戦略を切り替えます。
+
+| プロファイル | 用途 | 戦略 | 自動検出 |
+|------------|------|------|---------|
+| `daily` | 全テスト実行、データ蓄積 | `full` | `--profile daily` で明示指定 |
+| `ci` | PR の選択的テスト | `hybrid` + adaptive | `CI=true` で自動 |
+| `local` | 開発中の高速フィードバック | `affected` + 時間制約 | デフォルト |
+
+データの流れ: daily でデータ蓄積 → CI がその履歴で精度の高いサンプリング → ローカルは依存グラフで高速フィードバック
+
+```bash
+# 自動検出（CI なら ci、それ以外は local）
+flaker run
+
+# 明示指定
+flaker run --profile daily
+flaker run --profile ci
+flaker run --profile local
+```
+
+設定例:
+
+```toml
+[profile.daily]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true          # KPI に基づいて percentage を動的に調整
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60  # 時間制約内で優先度の高いテストを選択
 ```
 
 ## もっと深く使うには
