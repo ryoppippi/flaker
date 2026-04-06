@@ -24,7 +24,7 @@ describe("profile integration", () => {
   };
 
   const profiles: Record<string, ProfileConfig> = {
-    daily: { strategy: "full" },
+    scheduled: { strategy: "full" },
     ci: { strategy: "hybrid", percentage: 25, adaptive: true },
     local: {
       strategy: "affected",
@@ -33,8 +33,8 @@ describe("profile integration", () => {
     },
   };
 
-  it("daily profile runs all tests", () => {
-    const p = resolveProfile("daily", profiles, sampling);
+  it("scheduled profile runs all tests", () => {
+    const p = resolveProfile("scheduled", profiles, sampling);
     expect(p.strategy).toBe("full");
     expect(p.percentage).toBe(100);
     expect(p.holdout_ratio).toBe(0);
@@ -79,10 +79,10 @@ describe("profile integration", () => {
 
   it("end-to-end: FLAKER_PROFILE overrides CI detection", () => {
     process.env["CI"] = "true";
-    process.env["FLAKER_PROFILE"] = "daily";
+    process.env["FLAKER_PROFILE"] = "scheduled";
     const name = detectProfileName(undefined);
     const p = resolveProfile(name, profiles, sampling);
-    expect(p.name).toBe("daily");
+    expect(p.name).toBe("scheduled");
     expect(p.strategy).toBe("full");
   });
 });

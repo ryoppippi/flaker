@@ -50,7 +50,7 @@ min_runs = 5
 window_days = 14
 detection_threshold = 0.1
 
-[profile.daily]
+[profile.scheduled]
 strategy = "random"
 percentage = 30
 
@@ -70,7 +70,7 @@ adaptive_fnr_high = 0.04
     const config = loadConfig(dir);
 
     expect(config.profile).toBeDefined();
-    expect(config.profile?.["daily"]).toEqual({
+    expect(config.profile?.["scheduled"]).toEqual({
       strategy: "random",
       percentage: 30,
     });
@@ -143,7 +143,7 @@ describe("detectProfileName", () => {
   });
 
   it("returns explicit name when provided", () => {
-    expect(detectProfileName("daily")).toBe("daily");
+    expect(detectProfileName("scheduled")).toBe("scheduled");
   });
 
   it("returns FLAKER_PROFILE env var when set", () => {
@@ -163,7 +163,7 @@ describe("detectProfileName", () => {
 
   it("explicit overrides FLAKER_PROFILE env var", () => {
     process.env["FLAKER_PROFILE"] = "nightly";
-    expect(detectProfileName("daily")).toBe("daily");
+    expect(detectProfileName("scheduled")).toBe("scheduled");
   });
 
   it("explicit overrides CI env var", () => {
@@ -191,8 +191,8 @@ describe("resolveProfile", () => {
 
   it("merges profile over sampling defaults", () => {
     const result = resolveProfile(
-      "daily",
-      { daily: { strategy: "random", percentage: 30 } },
+      "scheduled",
+      { scheduled: { strategy: "random", percentage: 30 } },
       { strategy: "random", percentage: 50, holdout_ratio: 0.1 },
     );
     expect(result.strategy).toBe("random");

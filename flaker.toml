@@ -23,7 +23,7 @@ detected_flaky_rate = 0.005
 detected_co_failure_strength = 0.5
 detected_test_count = 437
 
-[profile.daily]
+[profile.scheduled]
 strategy = "full"
 
 [profile.ci]

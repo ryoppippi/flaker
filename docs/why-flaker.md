@@ -188,19 +188,19 @@ This maps directly to the root cause taxonomy from Luo et al. (2014):
 
 flaker's execution model is not just sampling at different granularities — it is a feedback control system where each tier's output improves the next tier's decisions.
 
-**Daily (full execution):** Runs all tests and accumulates ground truth history. This builds the co-failure matrix (which tests tend to fail together), per-test flaky rates, and stable baseline data. Without daily runs, CI and local tiers have nothing to calibrate against.
+**Scheduled (full execution):** Runs all tests on a regular schedule and accumulates ground truth history. This builds the co-failure matrix (which tests tend to fail together), per-test flaky rates, and stable baseline data. Without scheduled full runs, CI and local tiers have nothing to calibrate against.
 
-**CI (hybrid sampling):** Uses daily's accumulated data to make informed sampling decisions. Applies adaptive percentage to weight tests by risk. Randomly selects a holdout group (~10% of skipped tests) to measure false negative rate without running everything. The holdout result feeds back into the next CI run's sampling percentage.
+**CI (hybrid sampling):** Uses the scheduled tier's accumulated data to make informed sampling decisions. Applies adaptive percentage to weight tests by risk. Randomly selects a holdout group (~10% of skipped tests) to measure false negative rate without running everything. The holdout result feeds back into the next CI run's sampling percentage.
 
 **Local (affected + time budget):** Uses the dependency graph to select tests affected by changed files, bounded by a time budget. Because dependency graphs are imperfect, a divergence signal (how often CI and local disagree on which tests are affected) compensates for gaps in the graph.
 
 ```
-Daily (full)          →  accumulates history  →  feeds CI sampling quality
+Scheduled (full)      →  accumulates history  →  feeds CI sampling quality
 CI (hybrid)           →  selective execution  →  validates via holdout
 Local (affected)      →  fast feedback        →  compensated by divergence signal
 ```
 
-Each tier feeds the next. Daily informs CI's sampling weights. CI's holdout FNR drives adaptive percentage. CI's divergence signal compensates for local's dependency graph gaps. The system converges toward the minimum test set needed to maintain quality.
+Each tier feeds the next. Scheduled runs inform CI's sampling weights. CI's holdout FNR drives adaptive percentage. CI's divergence signal compensates for local's dependency graph gaps. The system converges toward the minimum test set needed to maintain quality.
 
 References: Memon et al. (ICSE-SEIP 2017), Machalica et al. (ICSE-SEIP 2019)
 

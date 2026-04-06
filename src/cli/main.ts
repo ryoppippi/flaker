@@ -237,7 +237,7 @@ interface SamplingCliOpts {
 
 function addSamplingOptions<T extends Command>(cmd: T): T {
   return cmd
-    .option("--profile <name>", "Execution profile: daily, ci, local (auto-detected if omitted)")
+    .option("--profile <name>", "Execution profile: scheduled, ci, local (auto-detected if omitted)")
     .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt, full")
     .option("--count <n>", "Number of tests to sample")
     .option("--percentage <n>", "Percentage of tests to sample")

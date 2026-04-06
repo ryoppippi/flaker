@@ -213,7 +213,7 @@ flaker automatically selects the right strategy for each execution context:
 
 | Profile | Strategy | Auto-detected |
 |---------|----------|--------------|
-| `daily` | `full` (all tests) | `--profile daily` (explicit only) |
+| `scheduled` | `full` (all tests) | `--profile scheduled` (explicit only) |
 | `ci` | `hybrid` + adaptive percentage | `CI=true` |
 | `local` | `affected` + time budget | default |
 
@@ -222,7 +222,7 @@ flaker automatically selects the right strategy for each execution context:
 flaker run
 
 # Explicit
-flaker run --profile daily
+flaker run --profile scheduled
 flaker run --profile ci
 flaker run --profile local
 ```
@@ -230,7 +230,7 @@ flaker run --profile local
 Configure in `flaker.toml`:
 
 ```toml
-[profile.daily]
+[profile.scheduled]
 strategy = "full"
 
 [profile.ci]
@@ -280,7 +280,7 @@ Start with advisory mode, not CI gating.
 
 The most practical rollout looks like this:
 
-1. `flaker run --profile daily` in a nightly scheduled workflow (full test + data accumulation)
+1. `flaker run --profile scheduled` in a nightly scheduled workflow (full test + data accumulation)
 2. `flaker run --profile ci` on PR push (selective execution, posts PR comment)
 3. `flaker run --profile local` during development (fast feedback)
 4. Review `flaker eval` weekly
@@ -369,7 +369,7 @@ auto = true
 flaky_rate_threshold = 30.0
 min_runs = 10
 
-[profile.daily]
+[profile.scheduled]
 strategy = "full"
 
 [profile.ci]
