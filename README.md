@@ -207,17 +207,84 @@ flaker run --strategy affected --changed src/foo.ts
 - false negatives / false positives
 - average saved minutes
 
+## Execution Profiles
+
+flaker automatically selects the right strategy for each execution context:
+
+| Profile | Strategy | Auto-detected |
+|---------|----------|--------------|
+| `daily` | `full` (all tests) | `--profile daily` (explicit only) |
+| `ci` | `hybrid` + adaptive percentage | `CI=true` |
+| `local` | `affected` + time budget | default |
+
+```bash
+# Auto-detect (CI → ci, otherwise → local)
+flaker run
+
+# Explicit
+flaker run --profile daily
+flaker run --profile ci
+flaker run --profile local
+```
+
+Configure in `flaker.toml`:
+
+```toml
+[profile.daily]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true        # auto-adjust based on false negative rate
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
+```
+
+Data flows downstream: daily accumulates history → CI uses it for smarter sampling → local uses dependency graph for fast feedback. The `adaptive` flag automatically reduces CI percentage when data quality is high.
+
+## CI Integration
+
+### PR Comments
+
+Post test results directly on pull requests:
+
+```yaml
+- name: Run flaker
+  run: flaker run --profile ci
+
+- name: Post PR comment
+  if: github.event_name == 'pull_request'
+  run: |
+    flaker report summarize --adapter vitest --input report.json --pr-comment \
+      | gh pr comment ${{ github.event.pull_request.number }} --body-file -
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Auto-create Issues for Quarantined Tests
+
+When flaky tests are auto-quarantined, create tracking issues:
+
+```bash
+flaker quarantine --auto --create-issues
+```
+
+This creates a GitHub Issue per quarantined test via `gh` CLI, with flaky rate, run count, and fix instructions. Requires `gh` to be installed and authenticated.
+
 ## Recommended Usage Model
 
 Start with advisory mode, not CI gating.
 
 The most practical rollout looks like this:
 
-- use `flaker run --strategy hybrid --count N` locally
-- keep full CI as the source of truth
-- collect local and CI results into the same database
-- review `flaker eval` weekly
-- only tighten the workflow after local-to-CI correlation looks strong
+1. `flaker run --profile daily` in a nightly scheduled workflow (full test + data accumulation)
+2. `flaker run --profile ci` on PR push (selective execution, posts PR comment)
+3. `flaker run --profile local` during development (fast feedback)
+4. Review `flaker eval` weekly
+5. Only tighten the workflow after local-to-CI correlation looks strong
 
 This works best in repositories with:
 
@@ -260,8 +327,17 @@ flaker query "SELECT * FROM test_results LIMIT 20"
 
 ```bash
 flaker quarantine
+flaker quarantine --auto --create-issues
 flaker check
 flaker affected --changed src/foo.ts
+```
+
+### Reporting
+
+```bash
+flaker report summarize --adapter vitest --input report.json --markdown
+flaker report summarize --adapter vitest --input report.json --pr-comment
+flaker report diff --base base.json --head head.json
 ```
 
 ## Minimal Configuration
@@ -292,6 +368,18 @@ detection_threshold = 2.0
 auto = true
 flaky_rate_threshold = 30.0
 min_runs = 10
+
+[profile.daily]
+strategy = "full"
+
+[profile.ci]
+strategy = "hybrid"
+percentage = 30
+adaptive = true
+
+[profile.local]
+strategy = "affected"
+max_duration_seconds = 60
 ```
 
 ## Docs
