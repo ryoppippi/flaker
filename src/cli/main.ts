@@ -4,7 +4,7 @@ import { resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { Octokit } from "@octokit/rest";
-import { loadConfig, writeSamplingConfig, type SamplingConfig } from "./config.js";
+import { loadConfig, writeSamplingConfig, type SamplingConfig, type FlakerConfig } from "./config.js";
 import { runInit } from "./commands/init.js";
 import {
   collectWorkflowRuns,
@@ -89,6 +89,8 @@ import {
   resolveQuarantineManifestPath,
   validateQuarantineManifest,
 } from "./quarantine-manifest.js";
+import { detectProfileName, resolveProfile, computeAdaptivePercentage, type ResolvedProfile } from "./profile.js";
+import { computeKpi } from "./commands/kpi.js";
 
 function formatHelpExamples(
   title: string,
@@ -218,6 +220,7 @@ async function createConfiguredResolver(
 }
 
 interface SamplingCliOpts {
+  profile?: string;
   strategy: string;
   count?: string;
   percentage?: string;
@@ -230,7 +233,8 @@ interface SamplingCliOpts {
 
 function addSamplingOptions<T extends Command>(cmd: T): T {
   return cmd
-    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt")
+    .option("--profile <name>", "Execution profile: daily, ci, local (auto-detected if omitted)")
+    .option("--strategy <s>", "Sampling strategy: random, weighted, affected, hybrid, gbdt, full")
     .option("--count <n>", "Number of tests to sample")
     .option("--percentage <n>", "Percentage of tests to sample")
     .option("--skip-quarantined", "Exclude quarantined tests")
@@ -241,6 +245,7 @@ function addSamplingOptions<T extends Command>(cmd: T): T {
 }
 
 interface ResolvedSamplingOpts {
+  resolvedProfile: ResolvedProfile;
   strategy: string;
   count?: number;
   percentage?: number;
@@ -254,17 +259,21 @@ interface ResolvedSamplingOpts {
 /** Merge CLI options with [sampling] config and parse to final types. CLI args take priority. */
 function resolveSamplingOpts(
   opts: SamplingCliOpts,
-  sampling?: SamplingConfig,
+  config: FlakerConfig,
 ): ResolvedSamplingOpts {
+  const profileName = detectProfileName(opts.profile);
+  const profile = resolveProfile(profileName, config.profile, config.sampling);
+
   return {
-    strategy: opts.strategy ?? sampling?.strategy ?? "weighted",
+    resolvedProfile: profile,
+    strategy: opts.strategy ?? profile.strategy,
     count: parseSampleCount(opts.count),
-    percentage: parseSamplePercentage(opts.percentage) ?? sampling?.percentage,
-    skipQuarantined: opts.skipQuarantined ?? sampling?.skip_quarantined,
+    percentage: parseSamplePercentage(opts.percentage) ?? profile.percentage,
+    skipQuarantined: opts.skipQuarantined ?? profile.skip_quarantined,
     changed: opts.changed,
-    coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : sampling?.co_failure_days,
-    holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : sampling?.holdout_ratio,
-    modelPath: opts.modelPath ?? sampling?.model_path,
+    coFailureDays: opts.coFailureDays ? parseInt(opts.coFailureDays, 10) : profile.co_failure_days,
+    holdoutRatio: opts.holdoutRatio ? parseFloat(opts.holdoutRatio) : profile.holdout_ratio,
+    modelPath: opts.modelPath ?? profile.model_path,
   };
 }
 
@@ -473,7 +482,8 @@ addSamplingOptions(
 ).action(
     async (rawOpts: SamplingCliOpts) => {
       const config = loadConfig(process.cwd());
-      const opts = resolveSamplingOpts(rawOpts, config.sampling);
+      const opts = resolveSamplingOpts(rawOpts, config);
+      console.log(`# Profile: ${opts.resolvedProfile.name}`);
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
@@ -547,7 +557,9 @@ addSamplingOptions(
     async (rawOpts: SamplingCliOpts & { runner: string; retry?: boolean }) => {
       const cwd = process.cwd();
       const config = loadConfig(cwd);
-      const opts = { ...resolveSamplingOpts(rawOpts, config.sampling), runner: rawOpts.runner, retry: rawOpts.retry };
+      const resolved = resolveSamplingOpts(rawOpts, config);
+      console.log(`# Profile: ${resolved.resolvedProfile.name}`);
+      const opts = { ...resolved, runner: rawOpts.runner, retry: rawOpts.retry };
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
 
@@ -618,6 +630,29 @@ addSamplingOptions(
         }
         const commitSha = resolveCurrentCommitSha(cwd) ?? `local-${Date.now()}`;
         const kpi = await runSamplingKpi({ store });
+
+        // Adaptive percentage adjustment
+        const profile = opts.resolvedProfile;
+        if (profile.adaptive && opts.percentage != null) {
+          const kpiData = await computeKpi(store);
+          const adaptive = computeAdaptivePercentage(
+            kpiData.sampling.falseNegativeRate,
+            {
+              basePercentage: opts.percentage,
+              fnrLow: profile.adaptive_fnr_low,
+              fnrHigh: profile.adaptive_fnr_high,
+              minPercentage: profile.adaptive_min_percentage,
+              step: profile.adaptive_step,
+            },
+          );
+          opts.percentage = adaptive.percentage;
+          console.log(`# Adaptive: ${adaptive.reason}`);
+        }
+
+        if (profile.max_duration_seconds != null) {
+          console.log(`# Time budget: ${profile.max_duration_seconds}s`);
+        }
+
         const runResult = await runTests({
           store,
           runner: createRunner(config.runner),
