@@ -1,0 +1,88 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { detectProfileName, resolveProfile } from "../../src/cli/profile.js";
+import type { ProfileConfig, SamplingConfig } from "../../src/cli/config.js";
+
+describe("profile integration", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env["FLAKER_PROFILE"];
+    delete process.env["CI"];
+    delete process.env["GITHUB_ACTIONS"];
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  const sampling: SamplingConfig = {
+    strategy: "hybrid",
+    percentage: 30,
+    holdout_ratio: 0.1,
+    co_failure_days: 90,
+  };
+
+  const profiles: Record<string, ProfileConfig> = {
+    daily: { strategy: "full" },
+    ci: { strategy: "hybrid", percentage: 25, adaptive: true },
+    local: {
+      strategy: "affected",
+      max_duration_seconds: 60,
+      fallback_strategy: "weighted",
+    },
+  };
+
+  it("daily profile runs all tests", () => {
+    const p = resolveProfile("daily", profiles, sampling);
+    expect(p.strategy).toBe("full");
+    expect(p.percentage).toBe(100);
+    expect(p.holdout_ratio).toBe(0);
+  });
+
+  it("ci profile uses adaptive with hybrid", () => {
+    const p = resolveProfile("ci", profiles, sampling);
+    expect(p.strategy).toBe("hybrid");
+    expect(p.percentage).toBe(25);
+    expect(p.adaptive).toBe(true);
+    expect(p.holdout_ratio).toBe(0.1); // inherited from sampling
+  });
+
+  it("local profile uses affected with time budget", () => {
+    const p = resolveProfile("local", profiles, sampling);
+    expect(p.strategy).toBe("affected");
+    expect(p.max_duration_seconds).toBe(60);
+    expect(p.fallback_strategy).toBe("weighted");
+  });
+
+  it("unknown profile falls back to sampling config", () => {
+    const p = resolveProfile("staging", profiles, sampling);
+    expect(p.strategy).toBe("hybrid");
+    expect(p.percentage).toBe(30);
+  });
+
+  it("end-to-end: auto-detect in non-CI env resolves to local", () => {
+    const name = detectProfileName(undefined);
+    const p = resolveProfile(name, profiles, sampling);
+    expect(p.name).toBe("local");
+    expect(p.strategy).toBe("affected");
+  });
+
+  it("end-to-end: CI env resolves to ci profile", () => {
+    process.env["CI"] = "true";
+    const name = detectProfileName(undefined);
+    const p = resolveProfile(name, profiles, sampling);
+    expect(p.name).toBe("ci");
+    expect(p.strategy).toBe("hybrid");
+    expect(p.adaptive).toBe(true);
+  });
+
+  it("end-to-end: FLAKER_PROFILE overrides CI detection", () => {
+    process.env["CI"] = "true";
+    process.env["FLAKER_PROFILE"] = "daily";
+    const name = detectProfileName(undefined);
+    const p = resolveProfile(name, profiles, sampling);
+    expect(p.name).toBe("daily");
+    expect(p.strategy).toBe("full");
+  });
+});
