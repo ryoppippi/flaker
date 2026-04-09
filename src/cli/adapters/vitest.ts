@@ -1,4 +1,5 @@
 import type { TestCaseResult, TestResultAdapter } from "./types.js";
+import { normalizeVitestSuitePath } from "../runners/vitest.js";
 
 interface VitestAssertionResult {
   ancestorTitles: string[];
@@ -25,7 +26,7 @@ export const vitestAdapter: TestResultAdapter = {
     const results: TestCaseResult[] = [];
 
     for (const file of report.testResults) {
-      const suite = file.name;
+      const suite = normalizeVitestSuitePath(file.name, { cwd: process.cwd() });
       for (const test of file.assertionResults) {
         if (test.status === "pending" || test.status === "todo") continue;
 

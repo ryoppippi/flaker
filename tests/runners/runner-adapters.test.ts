@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { resolve } from "node:path";
 import { VitestRunner, parseVitestJson, parseVitestList } from "../../src/cli/runners/vitest.js";
 import { PlaywrightRunner, parsePlaywrightList } from "../../src/cli/runners/playwright.js";
 import { MoonTestRunner, parseMoonTestOutput, parseMoonTestList } from "../../src/cli/runners/moontest.js";
@@ -103,6 +104,46 @@ describe("VitestRunner", () => {
     });
   });
 
+  it("execute normalizes absolute vitest suite paths to cwd-relative paths", async () => {
+    const suite = "tests/adapters/vitest.test.ts";
+    const runner = new VitestRunner({
+      safeExec: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({
+          testResults: [
+            {
+              name: resolve(process.cwd(), suite),
+              assertionResults: [
+                {
+                  fullName: "vitestAdapter parses vitest JSON reporter output",
+                  status: "passed",
+                  duration: 5,
+                  failureMessages: [],
+                },
+              ],
+            },
+          ],
+        }),
+        stderr: "",
+      }),
+    });
+
+    const result = await runner.execute([
+      {
+        suite,
+        testName: "vitestAdapter parses vitest JSON reporter output",
+      },
+    ], { cwd: process.cwd() });
+
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        suite,
+        testName: "vitestAdapter parses vitest JSON reporter output",
+        status: "passed",
+      }),
+    ]);
+  });
+
   it("execute handles parse failure gracefully", async () => {
     const runner = new VitestRunner({
       exec: () => ({ exitCode: 1, stdout: "not json", stderr: "error" }),
@@ -178,6 +219,31 @@ describe("parseVitestJson", () => {
       suite: "/file.test.ts",
       testName: "outer inner test",
       taskId: "/file.test.ts",
+      status: "passed",
+    });
+  });
+
+  it("normalizes suite paths under cwd to relative paths", () => {
+    const suite = resolve(process.cwd(), "tests/abs-path.test.ts");
+    const json = JSON.stringify({
+      testResults: [
+        {
+          name: suite,
+          assertionResults: [
+            {
+              fullName: "outer inner test",
+              status: "passed",
+              duration: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const results = parseVitestJson(json, { cwd: process.cwd() });
+    expect(results[0]).toMatchObject({
+      suite: "tests/abs-path.test.ts",
+      testName: "outer inner test",
+      taskId: "tests/abs-path.test.ts",
       status: "passed",
     });
   });

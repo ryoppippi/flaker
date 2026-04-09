@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from "node:path";
 import type { TestCaseResult } from "../adapters/types.js";
 import type {
   RunnerAdapter,
@@ -30,18 +31,42 @@ interface VitestJsonOutput {
   testResults: VitestTestResult[];
 }
 
-export function parseVitestJson(stdout: string): TestCaseResult[] {
+export function normalizeVitestSuitePath(
+  suite: string,
+  opts?: { cwd?: string },
+): string {
+  const cwd = opts?.cwd?.trim();
+  if (!cwd || !isAbsolute(suite)) {
+    return suite;
+  }
+
+  const normalized = relative(cwd, suite);
+  if (
+    normalized.length === 0
+    || normalized.startsWith("..")
+    || isAbsolute(normalized)
+  ) {
+    return suite;
+  }
+  return normalized.replace(/\\/g, "/");
+}
+
+export function parseVitestJson(
+  stdout: string,
+  opts?: { cwd?: string },
+): TestCaseResult[] {
   const data: VitestJsonOutput = JSON.parse(stdout);
   const results: TestCaseResult[] = [];
   for (const file of data.testResults) {
+    const suite = normalizeVitestSuitePath(file.name, opts);
     for (const assertion of file.assertionResults) {
       if (assertion.status === "pending" || assertion.status === "todo") {
         continue;
       }
       results.push({
-        suite: file.name,
+        suite,
         testName: assertion.fullName,
-        taskId: file.name,
+        taskId: suite,
         status: assertion.status === "passed"
           ? "passed"
           : assertion.status === "skipped"
@@ -130,7 +155,7 @@ export class VitestRunner implements RunnerAdapter {
 
     let results: TestCaseResult[] = [];
     try {
-      const all = parseVitestJson(stdout);
+      const all = parseVitestJson(stdout, { cwd: opts?.cwd });
       const selectedKeys = new Set(tests.map((t) => `${t.suite}\0${t.testName}`));
       results = all.filter((r) => selectedKeys.has(`${r.suite}\0${r.testName}`));
     } catch {

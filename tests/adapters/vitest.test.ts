@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { resolve } from "node:path";
 import { vitestAdapter } from "../../src/cli/adapters/vitest.js";
 
 describe("vitestAdapter", () => {
@@ -74,5 +75,34 @@ describe("vitestAdapter", () => {
   it("handles empty test results", () => {
     const input = JSON.stringify({ testResults: [] });
     expect(vitestAdapter.parse(input)).toHaveLength(0);
+  });
+
+  it("normalizes absolute suite paths under cwd to relative paths", () => {
+    const input = JSON.stringify({
+      testResults: [
+        {
+          name: resolve(process.cwd(), "tests/commands/sample.test.ts"),
+          assertionResults: [
+            {
+              ancestorTitles: ["sample command"],
+              fullName: "sample command random returns correct count",
+              status: "passed",
+              title: "random returns correct count",
+              duration: 42.5,
+              failureMessages: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const results = vitestAdapter.parse(input);
+    expect(results).toEqual([
+      expect.objectContaining({
+        suite: "tests/commands/sample.test.ts",
+        testName: "sample command random returns correct count",
+        status: "passed",
+      }),
+    ]);
   });
 });
