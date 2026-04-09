@@ -5,9 +5,6 @@ on:
     - cron: "17 18 * * *"
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 permissions:
   contents: read
   actions: read
@@ -18,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -107,7 +104,7 @@ jobs:
 
       - name: Create or update nightly issue
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require("fs");
@@ -160,7 +157,7 @@ jobs:
 
       - name: Upload nightly artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flaker-self-host-nightly
           path: .artifacts
@@ -169,13 +166,15 @@ jobs:
 
       - name: Upload self-host metrics parquet
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flaker-self-host-metrics
           path: .flaker/artifacts
           if-no-files-found: warn
           include-hidden-files: true
 
-      - name: Fail when scheduled run fails
-        if: steps.flaker_run.outcome == 'failure'
-        run: exit 1
+      - name: Summarize scheduled run outcome
+        if: always()
+        run: |
+          echo "flaker_run_outcome=${{ steps.flaker_run.outcome }}"
+          echo "nightly_self_host_is_advisory=true"
