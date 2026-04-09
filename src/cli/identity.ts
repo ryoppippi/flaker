@@ -1,4 +1,5 @@
 import { MOONBIT_JS_BRIDGE_URL } from "./core/build-artifact.js";
+import { importOptionalMoonBitBridge } from "./core/bridge-loader.js";
 
 export interface TestIdentityFields {
   suite: string;
@@ -42,6 +43,15 @@ interface CoreResolvedStableTestIdentityOutput {
 interface IdentityCoreExports {
   create_stable_test_id_json: (inputJson: string) => string;
   resolve_test_identity_json: (inputJson: string) => string;
+}
+
+function isIdentityCoreExports(
+  mod: Partial<IdentityCoreExports>,
+): mod is IdentityCoreExports {
+  return (
+    typeof mod.create_stable_test_id_json === "function"
+    && typeof mod.resolve_test_identity_json === "function"
+  );
 }
 
 function toCoreVariant(
@@ -92,17 +102,67 @@ function toCoreInput(input: TestIdentityFields): CoreStableTestIdentityInput {
   return base;
 }
 
+function createStableTestIdFallback(
+  input: CoreStableTestIdentityInput,
+): string {
+  const taskId = input.task_id ?? input.suite;
+  const filter = input.filter ?? null;
+  const variant = fromCoreVariant(input.variant);
+  return JSON.stringify({
+    taskId,
+    suite: input.suite,
+    testName: input.test_name,
+    filter,
+    variant,
+  });
+}
+
+function resolveTestIdentityFallback(
+  input: CoreStableTestIdentityInput,
+): CoreResolvedStableTestIdentityOutput {
+  const taskId = input.task_id ?? input.suite;
+  const filter = input.filter;
+  const variant = toCoreVariant(fromCoreVariant(input.variant));
+  return {
+    suite: input.suite,
+    test_name: input.test_name,
+    task_id: taskId,
+    ...(filter != null ? { filter } : {}),
+    ...(variant ? { variant } : {}),
+    test_id: input.test_id ?? createStableTestIdFallback({
+      suite: input.suite,
+      test_name: input.test_name,
+      task_id: taskId,
+      ...(filter != null ? { filter } : {}),
+      ...(variant ? { variant } : {}),
+    }),
+  };
+}
+
 const identityCore = await (async (): Promise<IdentityCoreExports> => {
-  const mod = (await import(MOONBIT_JS_BRIDGE_URL.href)) as Partial<IdentityCoreExports>;
-  if (
-    typeof mod.create_stable_test_id_json === "function" &&
-    typeof mod.resolve_test_identity_json === "function"
-  ) {
-    return mod as IdentityCoreExports;
-  }
-  throw new Error(
-    "MoonBit identity bridge is missing required exports. Run 'moon build --target js' first.",
+  const mod = await importOptionalMoonBitBridge<IdentityCoreExports>(
+    MOONBIT_JS_BRIDGE_URL,
+    isIdentityCoreExports,
   );
+  if (mod) {
+    return mod;
+  }
+  return {
+    create_stable_test_id_json(inputJson: string): string {
+      return JSON.stringify(
+        createStableTestIdFallback(
+          JSON.parse(inputJson) as CoreStableTestIdentityInput,
+        ),
+      );
+    },
+    resolve_test_identity_json(inputJson: string): string {
+      return JSON.stringify(
+        resolveTestIdentityFallback(
+          JSON.parse(inputJson) as CoreStableTestIdentityInput,
+        ),
+      );
+    },
+  };
 })();
 
 export function normalizeVariant(

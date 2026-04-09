@@ -1,6 +1,8 @@
 import { access } from "node:fs/promises";
 import type { DependencyGraph } from "../graph/types.js";
 import { MOONBIT_JS_BRIDGE_URL } from "./build-artifact.js";
+import { importOptionalMoonBitBridge } from "./bridge-loader.js";
+import { createTypeScriptFallbackCore } from "./fallback.js";
 
 export interface DetectInput {
   results: Array<{
@@ -184,6 +186,27 @@ interface MbtJsExports {
   generate_fixture_json: (config: string) => string;
 }
 
+function isMbtJsExports(mod: Partial<MbtJsExports>): mod is MbtJsExports {
+  return (
+    typeof mod.detect_flaky_json === "function"
+    && typeof mod.sample_random_json === "function"
+    && typeof mod.sample_weighted_json === "function"
+    && typeof mod.sample_hybrid_json === "function"
+    && typeof mod.build_sampling_meta_json === "function"
+    && typeof mod.resolve_affected_json === "function"
+    && typeof mod.find_affected_nodes_json === "function"
+    && typeof mod.expand_transitive_json === "function"
+    && typeof mod.build_reverse_deps_json === "function"
+    && typeof mod.topological_sort_json === "function"
+    && typeof mod.get_affected_test_patterns_json === "function"
+    && typeof mod.select_by_coverage_json === "function"
+    && typeof mod.bucketize_rate_json === "function"
+    && typeof mod.train_gbdt_json === "function"
+    && typeof mod.predict_gbdt_json === "function"
+    && typeof mod.generate_fixture_json === "function"
+  );
+}
+
 function serializeGraph(graph: DependencyGraph): string {
   const serializable: SerializableDependencyGraph = {
     root_dir: graph.rootDir,
@@ -296,26 +319,13 @@ let cachedCore: MetriciCore | undefined;
 
 export async function loadCore(): Promise<MetriciCore> {
   if (cachedCore) return cachedCore;
-  const mbtPath = MOONBIT_JS_BRIDGE_URL.href;
-  const mbt = (await import(mbtPath)) as MbtJsExports;
-  if (
-    typeof mbt.detect_flaky_json !== "function" ||
-    typeof mbt.sample_random_json !== "function" ||
-    typeof mbt.sample_weighted_json !== "function" ||
-    typeof mbt.sample_hybrid_json !== "function" ||
-    typeof mbt.build_sampling_meta_json !== "function" ||
-    typeof mbt.resolve_affected_json !== "function" ||
-    typeof mbt.find_affected_nodes_json !== "function" ||
-    typeof mbt.expand_transitive_json !== "function" ||
-    typeof mbt.build_reverse_deps_json !== "function" ||
-    typeof mbt.topological_sort_json !== "function" ||
-    typeof mbt.get_affected_test_patterns_json !== "function"
-  ) {
-    throw new Error(
-      `MoonBit JS bridge at ${mbtPath} is missing required exports. Run 'moon build --target js' first.`,
-    );
-  }
-  cachedCore = wrapMbtCore(mbt);
+  const mbt = await importOptionalMoonBitBridge<MbtJsExports>(
+    MOONBIT_JS_BRIDGE_URL,
+    isMbtJsExports,
+  );
+  cachedCore = mbt
+    ? wrapMbtCore(mbt)
+    : createTypeScriptFallbackCore();
   return cachedCore;
 }
 
