@@ -489,6 +489,7 @@ fallback_strategy = "weighted"
 
 ## Docs
 
+- [新規プロジェクト導入チェックリスト (ja)](https://github.com/mizchi/flaker/blob/main/docs/new-project-checklist.ja.md)
 - [Usage Guide](https://github.com/mizchi/flaker/blob/main/docs/how-to-use.md)
 - [Why flaker](https://github.com/mizchi/flaker/blob/main/docs/why-flaker.md)
 - [Design Partner Rollout](https://github.com/mizchi/flaker/blob/main/docs/design-partner-rollout.ja.md)
