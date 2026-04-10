@@ -10,4 +10,5 @@ _build
 .npm-cache
 dist/flaker
 result
+.artifacts/
 .direnv
