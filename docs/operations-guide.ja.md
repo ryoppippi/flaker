@@ -86,10 +86,12 @@
 ```bash
 mkdir -p .artifacts
 export GITHUB_TOKEN=$(gh auth token)
-pnpm flaker collect ci --days 1
+pnpm flaker apply
 pnpm flaker ops daily --output .artifacts/flaker-daily.md
 pnpm flaker quarantine suggest --json --output .artifacts/quarantine-plan.json
 ```
+
+`flaker apply` は `flaker.toml` を desired state として現状を収束させる idempotent コマンド。従来の `collect` / `calibrate` / `quarantine apply` を順に手で呼ぶ必要はない。詳細な dry-run が欲しいときは `flaker plan`。
 
 ### 毎週
 

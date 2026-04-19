@@ -250,17 +250,19 @@ Pick the path that matches the repo's CI history on Day 1. `flaker calibrate` on
 The first `flaker run` self-seeds a history from the runner's listed tests (cold-start fallback; see below). Run `collect` / `calibrate` later on Day 2–3 once CI has accumulated enough data.
 
 1. `flaker init` — creates `flaker.toml`, auto-detects repo from git remote
-2. `flaker doctor` — verifies DuckDB, MoonBit, and config
+2. `flaker doctor`[^doctor-canonical] — verifies DuckDB, MoonBit, and config
 3. `flaker run --gate iteration` — runs tests and records the first local history
 4. `flaker status` — user-facing summary dashboard
 5. (Day 2–3) `flaker collect --days 30 && flaker collect calibrate` — once CI has accumulated runs, pull them in and tune sampling
+
+[^doctor-canonical]: `flaker doctor` is the onboarding-friendly alias; the canonical form is `flaker debug doctor` (see canonical command forms table below).
 
 ### Path 2 — Existing repo, CI history already present
 
 Calibrate on Day 1 using the existing history.
 
 1. `flaker init` — creates `flaker.toml`, auto-detects repo from git remote
-2. `flaker doctor` — verifies DuckDB, MoonBit, and config
+2. `flaker doctor`[^doctor-canonical] — verifies DuckDB, MoonBit, and config
 3. `flaker collect --days 30` — pulls recent CI runs from GitHub Actions (requires `GITHUB_TOKEN`)
 4. `flaker collect calibrate` — analyzes the collected history and writes optimal sampling config back into `flaker.toml`
 5. `flaker run --gate iteration` — fast local feedback
@@ -268,10 +270,18 @@ Calibrate on Day 1 using the existing history.
 
 The staged onboarding checklist at [docs/new-project-checklist.ja.md](docs/new-project-checklist.ja.md) expands Path 1 across Day 0 → Week 4.
 
-> **Command-name notes**
+For users who want a single idempotent entrypoint instead of the step-by-step flow above, `flaker plan` / `flaker apply` (introduced in 0.6.0) treat `flaker.toml` as desired state and automatically sequence `collect` / `calibrate` / `quarantine apply` based on current DB state. Run `flaker plan` first to preview what will happen, then `flaker apply` to converge. Path 2 above remains fully supported for operators who prefer explicit control.
+
+> **Canonical command forms**
 >
-> - `flaker collect` and `flaker collect ci` are aliases — both call the same action (pull from GitHub Actions). Pick one and stick with it; this README standardizes on `flaker collect` in bare form.
-> - `flaker status` (top-level) and `flaker analyze kpi` (under the analyze category, also aliased as `flaker kpi`) are **different** commands. `status` is the summary-only dashboard intended for daily use. `analyze kpi` is the detailed KPI view used by operators. Use `flaker gate review merge --json` — not `status` — when you need the authoritative numbers for advisory-to-required promotion decisions.
+> | Canonical | Legacy form (accepted but avoid in new docs) |
+> |---|---|
+> | `flaker collect --days N` | `flaker collect ci --days N` |
+> | `flaker collect calibrate` | (there is no top-level `flaker calibrate`) |
+> | `flaker analyze kpi` | `flaker kpi` — DEPRECATED in 0.6.0 |
+> | `flaker debug doctor` | `flaker doctor` — DEPRECATED in 0.6.0 |
+>
+> `flaker collect` and `flaker collect ci` are aliases — both call the same action (pull from GitHub Actions). New docs standardize on `flaker collect` (no `ci` subcommand). `flaker status` (top-level) and `flaker analyze kpi` are **different** commands: `status` is the summary-only dashboard for daily use; `analyze kpi` is the detailed KPI view for operators. Use `flaker gate review merge --json` — not `status` — when you need the authoritative numbers for advisory-to-required promotion decisions.
 
 ### Initialize
 

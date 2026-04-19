@@ -155,6 +155,19 @@ detection_threshold_ratio = 0.02       # この割合以上で flaky と判定
 
 ## コマンドリファレンス
 
+### `flaker plan` / `flaker apply` — 宣言的収束
+
+```bash
+flaker plan           # 現状との差分を表示 (dry-run)
+flaker plan --json
+flaker apply          # 差分を埋めるために collect / calibrate / run / quarantine apply を自動実行
+flaker apply --json
+```
+
+`flaker.toml` を **desired state** とみなし、現在の DB 状態を見て「何をすべきか」を planner が組み立てる。履歴ゼロの新規 repo なら `collect_ci` + `cold_start_run` が、十分な履歴があれば `collect_ci` + `calibrate` + `quarantine_apply` が選ばれる。ユーザー側が順序を覚える必要はない。
+
+`[promotion]` セクションの閾値と現状の KPI を突き合わせて `flaker status` がドリフトを表示する。
+
 ### `flaker collect` — CI からデータ収集
 
 ```bash
