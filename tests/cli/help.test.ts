@@ -33,10 +33,7 @@ describe("CLI help", () => {
     const opsDailyHelp = opsCmd?.commands.find((command) => command.name() === "daily")?.helpInformation();
     const opsIncidentHelp = opsCmd?.commands.find((command) => command.name() === "incident")?.helpInformation();
     const opsWeeklyHelp = opsCmd?.commands.find((command) => command.name() === "weekly")?.helpInformation();
-    const analyzeCmd = program.commands.find((command) => command.name() === "analyze");
-    const evalHelp = analyzeCmd?.commands.find((command) => command.name() === "eval")?.helpInformation();
-    const bundleHelp = analyzeCmd?.commands.find((command) => command.name() === "bundle")?.helpInformation();
-    const flakyTagHelp = analyzeCmd?.commands.find((command) => command.name() === "flaky-tag")?.helpInformation();
+    // analyze subcommands (eval, bundle, flaky-tag) removed in 0.8.0 — lookups deleted.
     const importCmd = program.commands.find((command) => command.name() === "import");
     const importReportHelp = importCmd?.commands.find((command) => command.name() === "report")?.helpInformation();
 
@@ -60,10 +57,7 @@ describe("CLI help", () => {
     expect(opsIncidentHelp).toContain("--run");
     expect(opsWeeklyHelp).toContain("--window-days");
     expect(opsWeeklyHelp).toContain("--json");
-    expect(evalHelp).toContain("Measure whether local sampled runs predict CI");
-    expect(bundleHelp).toContain("AI consumers");
-    expect(bundleHelp).toContain("--window-days");
-    expect(flakyTagHelp).toContain("--remove-after-passes");
+    // evalHelp, bundleHelp, flakyTagHelp assertions removed — commands dropped in 0.8.0.
     expect(importReportHelp).toContain("--source");
   });
 });

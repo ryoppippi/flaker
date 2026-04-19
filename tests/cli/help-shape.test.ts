@@ -32,10 +32,4 @@ describe("flaker --help", () => {
   }
 });
 
-describe("analyze query --help", () => {
-  it("includes SQL examples", () => {
-    const out = help("analyze query");
-    expect(out).toContain("Examples:");
-    expect(out).toMatch(/SELECT.*test_results/);
-  });
-});
+// `flaker analyze query` was removed in 0.8.0; help-shape test for it is deleted.

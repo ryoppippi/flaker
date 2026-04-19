@@ -7,7 +7,7 @@ import { registerExecCommands, execRunAction, RUN_COMMAND_HELP } from "./categor
 import { registerCollectCommands } from "./categories/collect.js";
 import { registerImportCommands } from "./categories/import.js";
 import { registerReportCommands } from "./categories/report.js";
-import { registerAnalyzeCommands, analyzeKpiAction, statusAction, analyzeQueryAction } from "./categories/analyze.js";
+import { analyzeKpiAction, statusAction, analyzeQueryAction } from "./categories/analyze.js";
 import { registerExplainCommands } from "./categories/explain.js";
 import { registerGateCommands } from "./categories/gate.js";
 import { registerOpsCommands } from "./categories/ops.js";
@@ -34,7 +34,7 @@ export function createProgram(): Command {
   registerGateCommands(program);
   registerOpsCommands(program);
   registerQuarantineCommands(program);
-  registerAnalyzeCommands(program);
+  // registerAnalyzeCommands: all analyze subcommands removed in 0.8.0; parent dropped.
   registerExplainCommands(program);
   registerDebugCommands(program);
   registerPolicyCommands(program);
