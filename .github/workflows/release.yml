@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history needed so git-diff-tree / collect-commit-changes
+          # tests find a parent commit.
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
