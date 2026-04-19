@@ -7,7 +7,8 @@ import { registerExecCommands, execRunAction, RUN_COMMAND_HELP } from "./categor
 import { registerCollectCommands } from "./categories/collect.js";
 import { registerImportCommands } from "./categories/import.js";
 import { registerReportCommands } from "./categories/report.js";
-import { registerAnalyzeCommands, analyzeKpiAction, statusAction } from "./categories/analyze.js";
+import { registerAnalyzeCommands, analyzeKpiAction, statusAction, analyzeQueryAction } from "./categories/analyze.js";
+import { registerExplainCommands } from "./categories/explain.js";
 import { registerGateCommands } from "./categories/gate.js";
 import { registerOpsCommands } from "./categories/ops.js";
 import { registerQuarantineCommands } from "./categories/quarantine.js";
@@ -34,6 +35,7 @@ export function createProgram(): Command {
   registerOpsCommands(program);
   registerQuarantineCommands(program);
   registerAnalyzeCommands(program);
+  registerExplainCommands(program);
   registerDebugCommands(program);
   registerPolicyCommands(program);
   registerDevCommands(program);
@@ -95,6 +97,11 @@ export function createProgram(): Command {
     .option("--detail", "Append per-threshold drift actuals after the summary")
     .option("--gate <name>", "Narrow the gates block to a single gate: iteration | merge | release")
     .action(statusAction);
+
+  program
+    .command("query <sql>")
+    .description("Execute a read-only SQL query against the metrics database")
+    .action(analyzeQueryAction);
 
   const doctorCmd = program
     .command("doctor")
