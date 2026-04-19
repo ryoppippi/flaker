@@ -93,4 +93,30 @@ describe("planApply", () => {
       expect(a.reason.length).toBeGreaterThan(0);
     }
   });
+
+  it("each action carries a driftRef naming the field(s) it addresses", () => {
+    const actions = planApply(makeInput());
+    const collect = actions.find((a) => a.kind === "collect_ci");
+    expect(collect?.driftRef).toBeDefined();
+    // Path 1 (history staleDays null → collect_ci addresses local_history_missing or history_stale)
+    expect(collect?.driftRef?.some((d) => d.kind === "local_history_missing" || d.kind === "history_stale")).toBe(true);
+
+    const coldStart = actions.find((a) => a.kind === "cold_start_run");
+    expect(coldStart?.driftRef).toBeDefined();
+    expect(coldStart?.driftRef?.some((d) => d.kind === "local_history_missing")).toBe(true);
+  });
+
+  it("calibrate in Path 2 addresses matched_commits / data_confidence drifts", () => {
+    const actions = planApply(makeInput({
+      kpi: {
+        windowDays: 30,
+        sampling: { matchedCommits: 25 } as any,
+        flaky: { brokenTests: 0, intermittentFlaky: 0, trueFlakyRate: 0, flakyTrend: 0 },
+        data: { confidence: "moderate", staleDays: 0 } as any,
+      } as any,
+      probe: { hasGitRemote: true, hasGithubToken: true, hasLocalHistory: true },
+    }));
+    const calibrate = actions.find((a) => a.kind === "calibrate");
+    expect(calibrate?.driftRef).toBeDefined();
+  });
 });
