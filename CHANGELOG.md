@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.10.1
+
+Docs patch (closes #60). No code changes.
+
+### Docs
+
+`docs/how-to-use.md` (EN) backfilled with 9 sections previously JA-only:
+
+1. `flaker plan` / `flaker apply` — declarative convergence (0.9.0 feature)
+2. co-failure clustering / `[sampling].cluster_mode` (0.9.0 feature, issue #39)
+3. `flaker debug retry` — CI failure local reproduction
+4. `flaker debug confirm` — 3-way failure classification (BROKEN / FLAKY / TRANSIENT)
+5. Jest adapter configuration
+6. JUnit XML runner configuration
+7. `[runner.actrun]` per-runner examples (Playwright + Vitest)
+8. `flaky_tag_pattern` / `skip_flaky_tagged` runner behavior matrix
+9. `glob` resolver
+
+Plus the `vrt-migration` versioned schema section (pre-existing adjacent to `flaker import`; translated along with the 9-item list). No structural changes; pure JA→EN translation.
+
+EN heading count: 45 → 54 (JA reference: 51).
+
 ## 0.10.0 (breaking)
 
 Terraform-parity apply surface + `ops daily` removal + docs sweep. Replaces the previously-scoped 1.0.0 — we remain on the 0.x line until empirical stability justifies 1.0.
