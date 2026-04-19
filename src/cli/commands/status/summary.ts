@@ -1,10 +1,71 @@
-import type { FlakerConfig } from "../../config.js";
+import type { FlakerConfig, PromotionThresholds } from "../../config.js";
 import { type GateName, profileNameFromGateName } from "../../gate.js";
 import { resolveProfile } from "../../profile-compat.js";
 import { workflowRunSourceSql } from "../../run-source.js";
 import type { MetricStore } from "../../storage/types.js";
 import { computeKpi, type FlakerKpi } from "../analyze/kpi.js";
 import { runQuarantineSuggest } from "../quarantine/suggest.js";
+
+export interface DriftInput {
+  matchedCommits: number;
+  falseNegativeRatePercentage: number | null;
+  passCorrelationPercentage: number | null;
+  holdoutFnrPercentage: number | null;
+  dataConfidence: "insufficient" | "low" | "moderate" | "high";
+}
+
+export interface DriftItem {
+  field: string;
+  actual: number | string | null;
+  threshold: number | string;
+}
+
+export interface DriftReport {
+  ok: boolean;
+  unmet: DriftItem[];
+}
+
+const CONFIDENCE_RANK = { insufficient: 0, low: 1, moderate: 2, high: 3 } as const;
+
+export function computeDrift(input: DriftInput, thresholds: PromotionThresholds): DriftReport {
+  const unmet: DriftItem[] = [];
+  if (input.matchedCommits < thresholds.matched_commits_min) {
+    unmet.push({
+      field: "matched_commits",
+      actual: input.matchedCommits,
+      threshold: thresholds.matched_commits_min,
+    });
+  }
+  if (input.falseNegativeRatePercentage == null || input.falseNegativeRatePercentage > thresholds.false_negative_rate_max_percentage) {
+    unmet.push({
+      field: "false_negative_rate",
+      actual: input.falseNegativeRatePercentage,
+      threshold: thresholds.false_negative_rate_max_percentage,
+    });
+  }
+  if (input.passCorrelationPercentage == null || input.passCorrelationPercentage < thresholds.pass_correlation_min_percentage) {
+    unmet.push({
+      field: "pass_correlation",
+      actual: input.passCorrelationPercentage,
+      threshold: thresholds.pass_correlation_min_percentage,
+    });
+  }
+  if (input.holdoutFnrPercentage == null || input.holdoutFnrPercentage > thresholds.holdout_fnr_max_percentage) {
+    unmet.push({
+      field: "holdout_fnr",
+      actual: input.holdoutFnrPercentage,
+      threshold: thresholds.holdout_fnr_max_percentage,
+    });
+  }
+  if (CONFIDENCE_RANK[input.dataConfidence] < CONFIDENCE_RANK[thresholds.data_confidence_min]) {
+    unmet.push({
+      field: "data_confidence",
+      actual: input.dataConfidence,
+      threshold: thresholds.data_confidence_min,
+    });
+  }
+  return { ok: unmet.length === 0, unmet };
+}
 
 export interface StatusGateSummary {
   profile: string;
@@ -38,6 +99,7 @@ export interface StatusSummary {
     pendingAddCount: number;
     pendingRemoveCount: number;
   };
+  drift: DriftReport;
 }
 
 function buildGateSummary(config: FlakerConfig, gate: GateName): StatusGateSummary {
@@ -106,6 +168,19 @@ export async function runStatusSummary(input: {
     failed_results: 0,
   };
 
+  // kpi.sampling.falseNegativeRate, passCorrelation, and holdoutFNR are already
+  // percentages (0–100); no multiplication needed.
+  const drift = computeDrift(
+    {
+      matchedCommits: kpi.sampling.matchedCommits,
+      falseNegativeRatePercentage: kpi.sampling.falseNegativeRate,
+      passCorrelationPercentage: kpi.sampling.passCorrelation,
+      holdoutFnrPercentage: kpi.sampling.holdoutFNR,
+      dataConfidence: kpi.data.confidence,
+    },
+    input.config.promotion,
+  );
+
   return {
     generatedAt: now.toISOString(),
     windowDays,
@@ -134,6 +209,7 @@ export async function runStatusSummary(input: {
       pendingAddCount: quarantinePlan.add.length,
       pendingRemoveCount: quarantinePlan.remove.length,
     },
+    drift,
   };
 }
 
@@ -175,6 +251,31 @@ export function formatStatusSummary(summary: StatusSummary): string {
     `  current quarantined: ${summary.quarantine.currentCount}`,
     `  pending quarantine:  +${summary.quarantine.pendingAddCount} / -${summary.quarantine.pendingRemoveCount}`,
   );
+
+  lines.push("", "## Promotion drift");
+  if (summary.drift.ok) {
+    lines.push("  status: ready (all 5 thresholds met)");
+  } else {
+    lines.push(`  status: not ready  (${summary.drift.unmet.length}/5 thresholds unmet)`);
+    for (const item of summary.drift.unmet) {
+      const actual = item.actual == null ? "N/A" : typeof item.actual === "string" ? item.actual : `${item.actual}%`;
+      const threshold = typeof item.threshold === "string" ? item.threshold : `${item.threshold}%`;
+      let comparison: string;
+      if (item.field === "matched_commits") {
+        const actualNum = item.actual == null ? "N/A" : item.actual;
+        const thresholdNum = item.threshold;
+        lines.push(`  - ${item.field.padEnd(22)} actual=${actualNum}  threshold>=${thresholdNum}`);
+      } else if (item.field === "false_negative_rate" || item.field === "holdout_fnr") {
+        lines.push(`  - ${item.field.padEnd(22)} actual=${actual}  threshold<=${threshold}`);
+      } else if (item.field === "pass_correlation") {
+        lines.push(`  - ${item.field.padEnd(22)} actual=${actual}  threshold>=${threshold}`);
+      } else if (item.field === "data_confidence") {
+        lines.push(`  - ${item.field.padEnd(22)} actual=${item.actual ?? "N/A"}  threshold>=${item.threshold}`);
+      } else {
+        lines.push(`  - ${item.field}: actual=${actual}  threshold=${threshold}`);
+      }
+    }
+  }
 
   return lines.join("\n");
 }

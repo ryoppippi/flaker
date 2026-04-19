@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DuckDBStore } from "../../src/cli/storage/duckdb.js";
-import type { FlakerConfig } from "../../src/cli/config.js";
+import { DEFAULT_PROMOTION, type FlakerConfig } from "../../src/cli/config.js";
 import type { TestResult, WorkflowRun } from "../../src/cli/storage/types.js";
 import { formatOpsDailyReport, runOpsDaily } from "../../src/cli/commands/ops/daily.js";
 
@@ -25,6 +25,7 @@ function makeConfig(): FlakerConfig {
       ci: { strategy: "hybrid", sample_percentage: 25, adaptive: true, max_duration_seconds: 600 },
       scheduled: { strategy: "full", max_duration_seconds: 1800 },
     },
+    promotion: DEFAULT_PROMOTION,
   };
 }
 
