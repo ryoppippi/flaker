@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.1
+
+Docs patch (closes #58). No code changes.
+
+### Docs
+
+`docs/how-to-use.ja.md` had five stale top-level sections for commands removed in 0.8.0. Each is replaced with a pointer to the canonical 0.9.0 form:
+
+| Stale section | Replaced by |
+|---|---|
+| `flaker analyze flaky` | `flaker status --list flaky` |
+| `flaker analyze reason` | `flaker explain reason` (consolidated with the 4 other explain topics under one section) |
+| `flaker policy quarantine` | `flaker apply` + `[quarantine].auto` (plus pointer to `flaker status --list quarantined`) |
+| `flaker analyze eval` | `flaker status --markdown [--detail] [--gate <name>]` |
+| `flaker analyze query` | top-level `flaker query` |
+
+No behavior changes. Deferred to 0.10.0 (see #58): English `docs/how-to-use.md` parallel sweep, full `flaker explain` umbrella section with all 5 topics documented individually, `dev` subtree relocation to an Advanced subsection.
+
 ## 0.9.0
 
 Resource-diff plan model, DAG executor, and `flaker apply --output` / `--emit`.

@@ -273,34 +273,33 @@ flaker collect local --last 10    # 直近 10 run のみ
 
 actrun (GitHub Actions 互換ローカルランナー) の実行結果を自動取り込みします。artifact ディレクトリに Playwright/JUnit レポートがあれば、それも解析します。
 
-### `flaker analyze flaky` — flaky テスト検出
+### flaky テスト一覧 — `flaker status --list flaky`
+
+0.7.0 以前の `flaker analyze flaky` は 0.8.0 で削除。flaky テスト一覧は `flaker status --list flaky` に統合済み。
 
 ```bash
-flaker analyze flaky                      # 上位 flaky テスト一覧
-flaker analyze flaky --top 50             # 上位 50 件
-flaker analyze flaky --test "login"       # 名前でフィルタ
-flaker analyze flaky --true-flaky         # DeFlaker 式: 同一コミットで結果不一致
-flaker analyze flaky --trend --test "should redirect"  # 週次トレンド
-flaker analyze flaky --by-variant         # OS/ブラウザ別の flaky rate
+flaker status --list flaky                 # 上位 flaky テスト一覧
+flaker status --list flaky --json          # 機械可読
 ```
 
-#### 検出モード
+旧 `analyze flaky` の `--top` / `--test` / `--true-flaky` / `--trend` / `--by-variant` に相当する詳細切り口は、現状 `flaker query "SELECT ..."` で SQL を直接叩くか、`flaker explain insights` で AI 分析に委ねる。
 
-| モード | フラグ | 判定方法 |
-|--------|-------|---------|
-| 閾値ベース | (デフォルト) | 直近 N 日間の fail 率が閾値超え |
-| True flaky | `--true-flaky` | 同一 commit_sha で pass/fail が混在 (DeFlaker 方式) |
-| variant 別 | `--by-variant` | OS/ブラウザ等の実行条件ごとに flaky rate を計算 |
+### `flaker explain <topic>` — AI 分析
 
-### `flaker analyze reason` — AI 分析
+旧 `flaker analyze reason/insights/cluster/bundle/context` は 0.8.0 で `flaker explain <topic>` umbrella に集約。
 
 ```bash
-flaker analyze reason                     # 推奨アクション付きレポート
-flaker analyze reason --json              # 機械可読 JSON
-flaker analyze reason --window 7          # 直近 7 日間で分析
+flaker explain reason                     # flaky テスト分類 + 推奨アクション
+flaker explain reason --json              # 機械可読 JSON
+flaker explain reason --window-days 7     # 直近 7 日間で分析
+
+flaker explain cluster                    # co-failure クラスタ (co-failure クラスタリング節を参照)
+flaker explain insights                   # sampling KPI からの adaptive insights
+flaker explain bundle                     # bundle level 失敗の集約
+flaker explain context                    # 障害 context 抽出
 ```
 
-各 flaky テストを分類し、推奨アクションを提示します:
+`reason` が返す分類:
 
 | 分類 | 意味 | 推奨アクション |
 |------|------|--------------|
@@ -477,16 +476,22 @@ flaker dev train --window-days 30 --num-trees 10 --learning-rate 0.3
 
 蓄積済みの CI / local history から `.flaker/models/gbdt.json` を生成します。local run も低い重みで学習に含め、保存される model には `gbdt` sampling で使う feature 名も入ります。
 
-### `flaker policy quarantine` — flaky テストの隔離
+### quarantine の管理 — `flaker apply` + `[quarantine].auto`
 
-```bash
-flaker policy quarantine                                 # 隔離済み一覧
-flaker policy quarantine --auto                          # 閾値超えを自動隔離
-flaker policy quarantine --add "suite>testName"          # 手動追加
-flaker policy quarantine --remove "suite>testName"       # 解除
+0.7.0 以前の `flaker policy quarantine` / `flaker quarantine suggest|apply` は 0.8.0 で削除。quarantine は宣言的に扱う:
+
+```toml
+[quarantine]
+auto = true                              # 閾値超えは apply が自動で隔離
+flaky_rate_threshold_percentage = 30
+min_runs = 10
 ```
 
-隔離されたテストは `--skip-quarantined` で実行から除外できます。
+`flaker apply` が履歴に応じて quarantine 提案 + 適用を内包する (`QuarantineAction`)。
+
+- 一覧: `flaker status --list quarantined`
+- 手動 override が必要な場合は `.flaker/quarantine-manifest.toml` を直接編集してコミット (apply は既存 manifest を尊重する)
+- 実行時の除外は引き続き `flaker run --skip-quarantined`
 
 ### `flaker debug retry` — CI 失敗をローカル再現
 
@@ -529,27 +534,25 @@ flaker debug bisect --test "should redirect" --suite "tests/login.spec.ts"
 
 テスト結果の履歴から、flaky が始まったコミット範囲を特定します。
 
-### `flaker analyze eval` — 健全性評価
+### 健全性評価 — `flaker status --markdown`
+
+0.7.0 以前の `flaker analyze eval` は 0.8.0 で削除。同等の出力は `flaker status --markdown` に統合:
 
 ```bash
-flaker analyze eval
-flaker analyze eval --json
-flaker analyze eval --markdown --window 7
-flaker analyze eval --markdown --window 7 --output .artifacts/flaker-review.md
+flaker status --markdown                                           # 週次レビューに貼れる Markdown summary
+flaker status --markdown --output .artifacts/flaker-review.md      # ファイルに保存
+flaker status --detail --markdown                                  # drift 詳細セクション付き
+flaker status --gate merge --detail --markdown                     # merge gate の詳細のみに絞る
 ```
 
-テストスイート全体の健全性を 0-100 のスコアで評価します:
-- **Data Sufficiency** — データ量は十分か
-- **Detection** — flaky テストの検出状況
-- **Resolution** — flaky テストの解決状況 (MTTD/MTTR)
-- **Health Score** — 総合スコア
+0-100 の Health Score、flaky 件数、matched commits、correlation 等は全て `flaker status` 側に移植済。`--markdown` は週次レビュー向けテーブル、`--json` は機械可読。
 
-`--markdown --window 7` を使うと、週次レビューに貼りやすい KPI サマリを Markdown で出力します。
+### `flaker query` — SQL で直接分析
 
-### `flaker analyze query` — SQL で直接分析
+0.7.0 以前の `flaker analyze query` は 0.7.0 で top-level `flaker query` に昇格、0.8.0 でサブコマンド形は削除。
 
 ```bash
-flaker analyze query "SELECT suite, test_name, status, COUNT(*) as cnt
+flaker query "SELECT suite, test_name, status, COUNT(*) as cnt
               FROM test_results
               GROUP BY suite, test_name, status
               ORDER BY cnt DESC
