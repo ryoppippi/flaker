@@ -60,6 +60,18 @@ data_confidence_min = "high"
     expect(config.promotion.holdout_fnr_max_percentage).toBe(DEFAULT_PROMOTION.holdout_fnr_max_percentage);
   });
 
+  it("rejects unknown data_confidence_min value", () => {
+    dir = mkdtempSync(join(tmpdir(), "flaker-promo-"));
+    writeFileSync(join(dir, "flaker.toml"), MINIMAL_TOML + `
+[promotion]
+data_confidence_min = "bogus"
+`);
+    const config = loadConfig(dir);
+    const errors = validateConfigRanges(config);
+    const paths = errors.map((e) => e.path);
+    expect(paths).toContain("promotion.data_confidence_min");
+  });
+
   it("Case C: validateConfigRanges flags out-of-range pass_correlation_min_percentage = 150", () => {
     dir = mkdtempSync(join(tmpdir(), "flaker-promo-"));
     writeFileSync(join(dir, "flaker.toml"), MINIMAL_TOML);

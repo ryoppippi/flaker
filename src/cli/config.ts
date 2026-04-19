@@ -240,7 +240,7 @@ export function resolveActrunWorkflowPath(config: FlakerConfig): string {
 
 export interface ConfigRangeError {
   path: string;
-  value: number;
+  value: number | string;
   expected: string;
 }
 
@@ -278,6 +278,15 @@ export function validateConfigRanges(config: FlakerConfig): ConfigRangeError[] {
   check("promotion.false_negative_rate_max_percentage", config.promotion.false_negative_rate_max_percentage, 0, 100, "0-100");
   check("promotion.pass_correlation_min_percentage", config.promotion.pass_correlation_min_percentage, 0, 100, "0-100");
   check("promotion.holdout_fnr_max_percentage", config.promotion.holdout_fnr_max_percentage, 0, 100, "0-100");
+
+  const validConfidence = new Set(["low", "moderate", "high"]);
+  if (!validConfidence.has(config.promotion.data_confidence_min)) {
+    errors.push({
+      path: "promotion.data_confidence_min",
+      value: config.promotion.data_confidence_min,
+      expected: "one of low|moderate|high",
+    });
+  }
 
   return errors;
 }
