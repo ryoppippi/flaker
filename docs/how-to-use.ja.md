@@ -363,6 +363,38 @@ flaker policy quarantine --remove "suite>testName"       # 解除
 
 隔離されたテストは `--skip-quarantined` で実行から除外できます。
 
+### `flaker debug retry` — CI 失敗をローカル再現
+
+```bash
+flaker debug retry                      # 直近の失敗 CI run から失敗テストを取り、ローカル再実行
+flaker debug retry --run 12345678       # 特定の workflow run id を指定
+```
+
+CI の失敗 artifact から失敗テスト群を抽出し、ローカルで一括再実行します。**最初に打つコマンド**の位置付けで、複数の CI 失敗をまとめて「再現する / しない」で一次振り分けするために使います。出力は 2 値 (再現 / 非再現) で、`BROKEN/FLAKY/TRANSIENT` の分類までは行いません。細かい分類が欲しい場合は、非再現のテストを `flaker debug confirm` に回します。
+
+### `flaker debug confirm` — 失敗を 3 分類に判定
+
+```bash
+# remote: workflow_dispatch を叩いて CI で繰り返し実行
+flaker debug confirm "tests/api.test.ts:handles timeout"
+flaker debug confirm "tests/api.test.ts:handles timeout" --repeat 10
+
+# local: 手元の runner で繰り返し実行
+flaker debug confirm "tests/api.test.ts:handles timeout" --runner local
+```
+
+指定した 1 テストを `--repeat N` 回実行し、結果を 3 分類に判定します (`--repeat` の既定値は `5`):
+
+| 分類 | 条件 | 意味 / 推奨アクション |
+|---|---|---|
+| `BROKEN` | `failures == N` | 毎回失敗。regression として修正する |
+| `FLAKY` | `0 < failures < N` | 断続的失敗。`@flaky` タグ付与または quarantine |
+| `TRANSIENT` | `failures == 0` | 再現せず。CI 環境起因 / 一過性ノイズとして記録のみ |
+
+`--repeat 10` 以上は、低頻度の flaky を既定値 `5` では検出しきれないと疑うときに使います。試行回数を増やすほど判定が安定する一方、wall time が伸びます。
+
+remote モードは `.github/workflows/flaker-confirm.yml` を要求します。未生成の repo では `flaker init --force` で作り直すか、`templates/flaker-confirm.yml` をコピーしてください。
+
 ### `flaker debug bisect` — 原因コミット特定
 
 ```bash

@@ -60,8 +60,8 @@ pnpm flaker doctor
 期待する出力:
 
 ```
-OK  config    flaker.toml is readable
-OK  config rangesall values within expected ranges
+OK  config          flaker.toml is readable
+OK  config ranges   all values within expected ranges
 OK  duckdb    DuckDB initialized successfully
 OK  moonbit   MoonBit JS build detected (or fallback)
 
@@ -134,6 +134,13 @@ pnpm flaker collect calibrate
 データが少ないとき (commits < 20) は `confidence: insufficient` か `low` の警告が出るが無視して続行 OK。1 週間後に再度回せばよい。
 
 ### 3. KPI ダッシュボードで確認
+
+`flaker status` と `flaker analyze kpi` (= `flaker kpi`) は **別コマンド**。使い分けは:
+
+- `flaker status` — 日常チェック用のサマリダッシュボード。短く読める。
+- `flaker analyze kpi` — オペレータが詳細値を見る KPI ビュー。昇格判断の一次ソースは `flaker gate review merge --json` であって status/kpi ではない。
+
+Day 2-3 段階では詳細な数値を確認したいので kpi を使う:
 
 ```bash
 pnpm flaker analyze kpi

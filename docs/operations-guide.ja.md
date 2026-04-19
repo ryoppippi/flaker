@@ -121,12 +121,13 @@ pnpm flaker ops incident --suite path/to/spec.ts --test "test name" --output .ar
 
 ## 昇格・降格の目安
 
-`merge` gate を required に上げる前に、少なくとも次を満たす。
+`merge` gate を required に上げる前に、**次の 5 項目を全て満たす**。値は `flaker gate review merge --json` で確認する (昇格判断の一次ソース。`flaker status` は summary 専用で昇格判断には使わない)。
 
-- `matched commits >= 20`
-- `false negative rate <= 5%`
-- `pass correlation >= 95%`
-- `data confidence` が `moderate` 以上
+- `matched commits >= 20` — `merge` gate 実行と release/full 実行の両方が揃ったコミット数。nightly `--gate release` の積み上げで増える。
+- `false negative rate <= 5%` — matched commit のうち「`merge` gate は pass、full 実行は fail」の割合。つまり sampling が regression を見落とした比率。
+- `pass correlation >= 95%` — `P(full run passes | merge gate passes)`。README 他所で `P(CI pass | local pass)` と呼んでいるものと同じ。
+- `holdout FNR <= 10%` — `[sampling] holdout_ratio` で取り分けた holdout 集合に対する FNR。holdout は sampling 対象から除外しておき、その結果で「sampler が見ていない領域でも判断が再現するか」を監査する。sampler の overfit 検知用。
+- `data confidence` が `moderate` 以上 — matched commit 数 / 履歴 window / flaky ノイズ水準から算出される合成シグナル。大まかな目安は `low` = 10 matched commit 未満、`moderate` = 20–40 で FNR / correlation 緑、`high` = 40 超でノイズ安定。厳密な境界は `gate review merge` 出力側に従う。
 
 逆に次のどれかなら advisory または quarantine に戻す。
 

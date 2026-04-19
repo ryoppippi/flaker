@@ -243,11 +243,35 @@ The older primitives such as `analyze eval`, `analyze flaky-tag`, and `policy qu
 
 ## Quick Start
 
-1. **Initialize**: `flaker init` — creates `flaker.toml`, auto-detects repo from git remote
-2. **Calibrate**: `flaker collect calibrate` — analyzes history and writes optimal sampling config
-3. **Check environment**: `flaker doctor` — verifies DuckDB, MoonBit, and config
-4. **Run a gate**: `flaker run --gate iteration` — fast local feedback
-5. **Inspect health**: `flaker status` — KPI dashboard for sampling, flaky tests, and data quality
+Pick the path that matches the repo's CI history on Day 1. `flaker calibrate` only produces useful output once there are enough CI runs to analyze (it emits an `insufficient` warning on empty history), so it belongs in Path 2, not Path 1.
+
+### Path 1 — New repo, no CI history yet
+
+The first `flaker run` self-seeds a history from the runner's listed tests (cold-start fallback; see below). Run `collect` / `calibrate` later on Day 2–3 once CI has accumulated enough data.
+
+1. `flaker init` — creates `flaker.toml`, auto-detects repo from git remote
+2. `flaker doctor` — verifies DuckDB, MoonBit, and config
+3. `flaker run --gate iteration` — runs tests and records the first local history
+4. `flaker status` — user-facing summary dashboard
+5. (Day 2–3) `flaker collect --days 30 && flaker collect calibrate` — once CI has accumulated runs, pull them in and tune sampling
+
+### Path 2 — Existing repo, CI history already present
+
+Calibrate on Day 1 using the existing history.
+
+1. `flaker init` — creates `flaker.toml`, auto-detects repo from git remote
+2. `flaker doctor` — verifies DuckDB, MoonBit, and config
+3. `flaker collect --days 30` — pulls recent CI runs from GitHub Actions (requires `GITHUB_TOKEN`)
+4. `flaker collect calibrate` — analyzes the collected history and writes optimal sampling config back into `flaker.toml`
+5. `flaker run --gate iteration` — fast local feedback
+6. `flaker status` — user-facing summary dashboard (sampling, flaky tests, data quality)
+
+The staged onboarding checklist at [docs/new-project-checklist.ja.md](docs/new-project-checklist.ja.md) expands Path 1 across Day 0 → Week 4.
+
+> **Command-name notes**
+>
+> - `flaker collect` and `flaker collect ci` are aliases — both call the same action (pull from GitHub Actions). Pick one and stick with it; this README standardizes on `flaker collect` in bare form.
+> - `flaker status` (top-level) and `flaker analyze kpi` (under the analyze category, also aliased as `flaker kpi`) are **different** commands. `status` is the summary-only dashboard intended for daily use. `analyze kpi` is the detailed KPI view used by operators. Use `flaker gate review merge --json` — not `status` — when you need the authoritative numbers for advisory-to-required promotion decisions.
 
 ### Initialize
 
@@ -498,13 +522,13 @@ The repo now ships two GitHub-native self-host lanes:
 
 Both lanes render the same promotion-readiness summary from `scripts/self-host-review.mjs`. The current default is still advisory: the PR job is non-blocking, and the nightly workflow carries the long-form trend.
 
-Promote `flaker run --gate merge` to a required check only after the nightly issue shows:
+Promote `flaker run --gate merge` to a required check only after the nightly issue shows **all five** of the following. Check the current values with `flaker gate review merge --json` (authoritative for promotion) — `flaker status` is a summary-only dashboard and should not be used for promotion.
 
-- `matched commits >= 20`
-- `false negative rate <= 5%`
-- `pass correlation >= 95%`
-- `holdout FNR <= 10%`
-- `data confidence` reaches `moderate` or `high`
+- `matched commits >= 20` — commits where both a gated local/CI run and a release/full run exist in the same window, so that local sampling outcomes can be compared against a ground-truth full run. Increases as the nightly `--gate release` accumulates history.
+- `false negative rate <= 5%` — share of commits where the `merge` gate passed but the full run failed (sampling missed a real regression). Measured over the same matched-commit window.
+- `pass correlation >= 95%` — `P(full run passes | merge gate passes)` on matched commits. Same metric referenced elsewhere in this README as `P(CI pass | local pass)`.
+- `holdout FNR <= 10%` — FNR measured on the holdout slice defined by `[sampling] holdout_ratio`. Tests in the holdout slice are excluded from the sampled run so that their outcomes can be used to audit whether the sampler's verdict generalizes. Guards against sampler overfitting to the visible slice.
+- `data confidence` reaches `moderate` or `high` — derived signal combining matched-commit count, history window coverage, and flaky-noise level. Rough rule of thumb: `low` until ~10 matched commits, `moderate` around 20–40 with FNR/correlation green, `high` beyond 40 with stable noise. Exact boundaries come from the `gate review merge` output, not from config.
 
 ## Recommended Usage Model
 
@@ -584,9 +608,15 @@ flaker debug confirm "tests/api.test.ts:handles timeout" --repeat 10
 flaker debug confirm "tests/api.test.ts:handles timeout" --runner local
 ```
 
-Output: `BROKEN` (regression), `FLAKY` (intermittent), or `TRANSIENT` (not reproducible).
+Output classification (based on `--repeat N` runs, default `N=5`):
 
-Requires `.github/workflows/flaker-confirm.yml` for remote mode — generated by `flaker init`.
+- `BROKEN` — fails on **every** repeat (`failures == N`). Treat as a real regression.
+- `FLAKY` — fails on **some but not all** repeats (`0 < failures < N`). Candidate for `@flaky` tag or quarantine.
+- `TRANSIENT` — passes on every repeat (`failures == 0`). The original CI failure did not reproduce here; either CI-environment specific or a one-shot noise event.
+
+Use `--repeat 10` (or higher) when you suspect a low-rate flake that the default `N=5` might miss. Higher `N` trades wall time for classification confidence.
+
+Requires `.github/workflows/flaker-confirm.yml` for remote mode — generated by `flaker init`. If your repo predates this file, re-run `flaker init --force` or copy the template from `templates/flaker-confirm.yml` in this repo.
 
 ### Retry CI failures locally
 
