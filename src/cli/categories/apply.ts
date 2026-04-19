@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Command } from "commander";
 import { loadConfig, writeSamplingConfig } from "../config.js";
@@ -20,9 +20,11 @@ import {
   writeArtifact,
   serializePlanArtifact,
   serializeApplyArtifact,
+  deserializePlanArtifact,
   type EmitKind,
   type EmittedArtifact,
 } from "../commands/apply/artifact.js";
+import type { StateDiff } from "../commands/apply/state.js";
 import { runOpsDaily, formatOpsDailyReport } from "../commands/ops/daily.js";
 import { runOpsWeekly, formatOpsWeeklyReport } from "../commands/ops/weekly.js";
 import { createRunner } from "../runners/index.js";
@@ -100,12 +102,36 @@ const VALID_EMIT_KINDS = ["daily", "weekly", "incident"] as const;
 const VALID_TARGETS = ["collect_ci", "calibrate", "cold_start_run", "quarantine_apply"] as const;
 type Target = (typeof VALID_TARGETS)[number];
 
+function newDriftKinds(current: StateDiff, planned: StateDiff): string[] {
+  const plannedKinds = new Set(planned.drifts.map((d) => d.kind));
+  return current.drifts
+    .filter((d) => !plannedKinds.has(d.kind))
+    .map((d) => d.kind);
+}
+
 export async function applyAction(opts: {
   json?: boolean;
   output?: string;
   emit?: string;
   target?: string;
+  refreshOnly?: boolean;
+  planFile?: string;
+  force?: boolean;
 }): Promise<void> {
+  // Mutual exclusion: --refresh-only and --plan-file
+  if (opts.refreshOnly && opts.planFile) {
+    console.error("Error: --refresh-only and --plan-file are mutually exclusive.");
+    process.exitCode = 2;
+    return;
+  }
+
+  // Mutual exclusion: --target and --plan-file (plan is already filtered)
+  if (opts.target !== undefined && opts.planFile) {
+    console.error("Error: --target and --plan-file are mutually exclusive (the plan is already filtered).");
+    process.exitCode = 2;
+    return;
+  }
+
   // Validate --target value early
   if (opts.target !== undefined && !(VALID_TARGETS as readonly string[]).includes(opts.target)) {
     console.error(`Error: --target must be one of ${VALID_TARGETS.join(" | ")}. Got: ${opts.target}`);
@@ -135,6 +161,33 @@ export async function applyAction(opts: {
     const kpi = await computeKpi(store, { windowDays: 30 });
     const probe = await probeRepo({ cwd, store });
     const { diff, actions } = planApply({ config, kpi, probe });
+
+    // --refresh-only: print plan and optionally write PlanArtifact, then exit without executing
+    if (opts.refreshOnly) {
+      if (opts.output) {
+        const artifact = serializePlanArtifact({
+          generatedAt: new Date().toISOString(),
+          diff,
+          actions,
+          probe,
+        });
+        writeArtifact(opts.output, artifact);
+      }
+      if (opts.json) {
+        console.log(JSON.stringify({ actions }, null, 2));
+        return;
+      }
+      if (actions.length === 0) {
+        console.log("No actions needed. Current state matches flaker.toml.");
+        process.stderr.write(renderEmptyPlanHint() + "\n");
+        return;
+      }
+      console.log("Planned actions:");
+      for (const action of actions) {
+        console.log(`  - ${describeAction(action)}`);
+      }
+      return;
+    }
 
     const deps: ExecutorDeps = {
       collectCi: async ({ windowDays }) =>
@@ -174,6 +227,50 @@ export async function applyAction(opts: {
         return runQuarantineApply({ store, plan });
       },
     };
+
+    // --plan-file: load saved plan, check for new drift, execute stored actions
+    if (opts.planFile) {
+      let content: string;
+      try {
+        content = readFileSync(opts.planFile, "utf8");
+      } catch {
+        console.error(`Error: cannot read plan file: ${opts.planFile}`);
+        process.exitCode = 2;
+        return;
+      }
+      const planned = deserializePlanArtifact(content);
+      const newKinds = newDriftKinds(diff, planned.diff);
+      if (newKinds.length > 0) {
+        process.stderr.write(
+          `Warning: new drift detected since plan was saved: ${newKinds.join(", ")}\n`,
+        );
+        if (!opts.force) {
+          console.error("Error: repo state has drifted from plan. Use --force to apply anyway.");
+          process.exitCode = 2;
+          return;
+        }
+      }
+      const planDagResult = await executeDag(planned.actions, deps);
+      if (!opts.json) {
+        for (const exec of planDagResult.executed) {
+          const mark =
+            exec.status === "ok"      ? "ok  " :
+            exec.status === "failed"  ? "fail" :
+                                        "skip";
+          const suffix =
+            exec.status === "failed"  ? ` — ${exec.error ?? ""}` :
+            exec.status === "skipped" ? ` — ${exec.skippedReason ?? ""}` :
+                                        "";
+          console.log(`${mark} ${exec.kind}${suffix}`);
+        }
+        if (planDagResult.executed.some((e) => e.status === "failed")) {
+          process.exitCode = 1;
+        }
+      } else {
+        console.log(JSON.stringify({ executed: planDagResult.executed }, null, 2));
+      }
+      return;
+    }
 
     if (actions.length === 0) {
       console.log("No actions needed. Current state matches flaker.toml.");
@@ -313,5 +410,8 @@ export function registerApplyCommands(program: Command): void {
     .option("--output <file>", "Write ApplyArtifact JSON to a file")
     .option("--emit <kind>", "Generate an ops cadence artifact alongside apply (daily|weekly|incident)")
     .option("--target <kind>", "Run only actions of this kind (collect_ci|calibrate|cold_start_run|quarantine_apply)")
+    .option("--refresh-only", "Run probe + state-diff + plan but skip execution (writes PlanArtifact if --output set)")
+    .option("--plan-file <file>", "Load a previously-saved PlanArtifact and execute its stored actions")
+    .option("--force", "Force execution even if repo state has drifted from the plan file")
     .action(applyAction);
 }
