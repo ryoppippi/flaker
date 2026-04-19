@@ -9,15 +9,28 @@ export interface DeprecationOpts {
   canonical: string;
 }
 
+function fullPath(cmd: Command): string {
+  const parts: string[] = [];
+  let current: Command | null = cmd;
+  while (current) {
+    const n = current.name();
+    if (n) parts.unshift(n);
+    current = (current.parent as Command | null) ?? null;
+  }
+  return parts.join(" "); // e.g. "flaker analyze query"
+}
+
 export function deprecate(cmd: Command, opts: DeprecationOpts): Command {
-  const name = cmd.name();
   const prefix = `DEPRECATED in ${opts.since} (removed in ${opts.remove})`;
   const description = cmd.description();
   cmd.description(`${prefix} — use \`${opts.canonical}\` instead. ${description}`);
 
+  // Lazily compute the full path so that commands registered before .name()
+  // is set on the root program still resolve to the correct "flaker ..." path.
   const warn = () => {
+    const name = fullPath(cmd);
     process.stderr.write(
-      `warning: \`flaker ${name}\` is deprecated and will be removed in ${opts.remove}. `
+      `warning: \`${name}\` is deprecated and will be removed in ${opts.remove}. `
       + `Use \`${opts.canonical}\` instead.\n`,
     );
   };
