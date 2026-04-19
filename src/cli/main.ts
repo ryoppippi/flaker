@@ -134,14 +134,13 @@ Primary commands:
 
 Advanced:
   gate review <name>                Authoritative promotion metrics (--json)
-  ops weekly|incident               Cadence artifact bundles
+  ops daily|weekly|incident         Cadence artifact bundles
   analyze query                     (legacy — use \`flaker query\`)
   dev <train|tune|self-eval|...>    Maintainer tools
 
 Deprecated (removed in 0.8.0):
   setup init                        → flaker init
   exec run / exec affected          → flaker run
-  ops daily                         → flaker apply
   collect ci|local|coverage|calibrate → flaker apply
   quarantine suggest|apply          → flaker apply
   policy quarantine|check|report    → flaker apply
