@@ -47,9 +47,14 @@ jobs:
         run: nix develop --command pnpm run build
 
       - name: Verify
+        # vitest runs inside the devShell so the parquet-fixtures global
+        # setup (tests/setup/parquet-fixtures.ts) can invoke `moon test`
+        # to populate /tmp/flaker-*.parquet. Without moon on PATH the
+        # setup silently skips and tests/parquet/duckdb-interop.test.ts
+        # fails.
         run: |
           pnpm run typecheck
-          pnpm vitest run
+          nix develop --command pnpm vitest run
           nix develop --command moon test --target js
 
       - name: CLI smoke
