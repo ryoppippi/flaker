@@ -103,11 +103,10 @@ export function createProgram(): Command {
     .description("Execute a read-only SQL query against the metrics database")
     .action(analyzeQueryAction);
 
-  const doctorCmd = program
+  program
     .command("doctor")
     .description("Check runtime requirements")
     .action(debugDoctorAction);
-  deprecate(doctorCmd, { since: "0.7.0", remove: "0.8.0", canonical: "flaker debug doctor" });
 
   const originalHelpInformation = program.helpInformation.bind(program);
   program.helpInformation = () => {

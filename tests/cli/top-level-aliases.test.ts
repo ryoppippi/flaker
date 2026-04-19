@@ -86,10 +86,10 @@ describe("top-level aliases", () => {
     expect(help).toContain("--run");
   });
 
-  it("flaker doctor --help shows the top-level doctor alias", () => {
+  it("flaker doctor --help shows the canonical doctor command (not deprecated)", () => {
     const help = execSync(`node ${cliPath} doctor --help`, { encoding: "utf-8" });
-    expect(help).toContain("DEPRECATED");
-    expect(help).toContain("flaker debug doctor");
+    expect(help).toContain("Check runtime requirements");
+    expect(help).not.toContain("DEPRECATED");
   });
 
   it("flaker collect --help shows collect subcommands and ci options", () => {
