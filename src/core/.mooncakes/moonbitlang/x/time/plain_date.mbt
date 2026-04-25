@@ -27,7 +27,7 @@ pub fn PlainDate::of(
   month : Int,
   day : Int,
 ) -> PlainDate raise Error {
-  if not(validate_ymd(year, month, day)) {
+  if !(validate_ymd(year, month, day)) {
     fail(invalid_date_err)
   }
   PlainDate::{ year, month, day }
@@ -40,7 +40,7 @@ pub fn PlainDate::from_year_ord(
   ordinal : Int,
 ) -> PlainDate raise Error {
   let valid = validate_year(year) && validate_ordinal(year, ordinal)
-  if not(valid) {
+  if !(valid) {
     fail(invalid_date_err)
   }
   let mut month = 1

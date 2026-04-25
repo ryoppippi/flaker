@@ -124,10 +124,10 @@ fn MD5::md5_compute(self : MD5) -> FixedArray[Byte] {
 
 // no macros, nor inline. basic md5 functions
 // four auxiliary functions
-//          F(X,Y,Z) = XY v not(X) Z
-//          G(X,Y,Z) = XZ v Y not(Z)
+//          F(X,Y,Z) = XY v !(X) Z
+//          G(X,Y,Z) = XZ v Y !(Z)
 //          H(X,Y,Z) = X xor Y xor Z
-//          I(X,Y,Z) = Y xor (X v not(Z))
+//          I(X,Y,Z) = Y xor (X v !(Z))
 
 ///|
 fn MD5::f(x : UInt, y : UInt, z : UInt) -> UInt {

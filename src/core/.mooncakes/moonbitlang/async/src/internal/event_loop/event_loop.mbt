@@ -230,7 +230,7 @@ fn EventLoop::poll(self : Self) -> Unit raise {
       while fetch_completion_ffi(self.notify_recv) is job_id && job_id >= 0 {
         self.handle_completed_job(job_id)
       } else {
-        if not(@os_error.is_nonblocking_io_error()) {
+        if !(@os_error.is_nonblocking_io_error()) {
           @os_error.check_errno("runtime internal: failed to get completed job")
         }
       }
@@ -284,7 +284,7 @@ fn EventLoop::cleanup(self : Self) -> Unit raise {
     if handle.write is Some(coro) {
       coro.cancel()
     }
-    if not(handle.events is NoEvent) {
+    if !(handle.events is NoEvent) {
       // if `poll_register` fails, `handle.events` may be `NoEvent`,
       // in this case we have never added it to the poller,
       // so we must not remove it from the poller here
@@ -338,7 +338,7 @@ fn EventLoop::cleanup(self : Self) -> Unit raise {
 ///|
 fn EventLoop::run_forever(self : Self) -> Unit raise {
   try {
-    while not(@coroutine.no_more_work() && self.running_workers.is_empty()) {
+    while !(@coroutine.no_more_work() && self.running_workers.is_empty()) {
       self.poll() catch {
         @os_error.OSError(_) as err if err.is_EINTR() => continue
         err => raise err
@@ -350,7 +350,7 @@ fn EventLoop::run_forever(self : Self) -> Unit raise {
       self.cleanup()
       // In case the event loop has encountered some fatal error,
       // propagate the error to relevant coroutines.
-      while not(@coroutine.no_more_work()) {
+      while !(@coroutine.no_more_work()) {
         @coroutine.reschedule()
       }
       raise err

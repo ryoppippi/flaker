@@ -40,7 +40,7 @@ pub fn parse_analyze_cli_args(raw_args : Array[String]) -> AnalyzeCliSpec {
       changed_paths.push(arg)
     }
   }
-  if not(show_help) {
+  if !(show_help) {
     if workflow_path.length() == 0 {
       errors.push("workflow path is required")
     }

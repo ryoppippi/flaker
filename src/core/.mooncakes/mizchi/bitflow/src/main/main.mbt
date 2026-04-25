@@ -60,7 +60,7 @@ pub fn parse_main_cli_args(raw_args : Array[String]) -> CliRunSpec {
     }
     i += 1
   }
-  if not(show_help) && workflow_path.length() == 0 {
+  if !(show_help) && workflow_path.length() == 0 {
     errors.push("workflow path is required")
   }
   { show_help, workflow_path, errors }

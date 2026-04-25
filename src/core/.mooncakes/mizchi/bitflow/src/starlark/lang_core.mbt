@@ -1257,7 +1257,7 @@ fn resolve_expr_call(
     match args[0] {
       List(items) => {
         for item in items {
-          if not(value_truthy(item)) {
+          if !(value_truthy(item)) {
             return Some(Bool(false))
           }
         }
@@ -1265,7 +1265,7 @@ fn resolve_expr_call(
       }
       Dict(entries) => {
         for key, _ in entries {
-          if not(value_truthy(Str(key))) {
+          if !(value_truthy(Str(key))) {
             return Some(Bool(false))
           }
         }
@@ -1603,7 +1603,7 @@ fn value_equals(left : StarlarkValue, right : StarlarkValue) -> Bool {
         return false
       }
       for i in 0..<lhs.length() {
-        if not(value_equals(lhs[i], rhs[i])) {
+        if !(value_equals(lhs[i], rhs[i])) {
           return false
         }
       }
@@ -1616,7 +1616,7 @@ fn value_equals(left : StarlarkValue, right : StarlarkValue) -> Bool {
       for key, value in lhs {
         match rhs.get(key) {
           Some(rhs_value) =>
-            if not(value_equals(value, rhs_value)) {
+            if !(value_equals(value, rhs_value)) {
               return false
             }
           None => return false
@@ -1750,7 +1750,7 @@ fn resolve_value(
             }
           None => true
         }
-        if not(should_include) {
+        if !(should_include) {
           continue
         }
         match resolve_value(item_expr, local_bindings, line, column, errors) {
@@ -1786,7 +1786,7 @@ fn resolve_value(
             }
           None => true
         }
-        if not(should_include) {
+        if !(should_include) {
           continue
         }
         let resolved_key = match
@@ -1940,7 +1940,7 @@ fn resolve_value(
                 resolve_in_membership(
                   resolved_left, resolved_right, line, column, errors,
                 ) {
-                Some(Bool(found)) => Some(Bool(not(found)))
+                Some(Bool(found)) => Some(Bool(!(found)))
                 Some(_) => None
                 None => None
               }
@@ -1950,7 +1950,7 @@ fn resolve_value(
       }
     Not(expr) =>
       match resolve_value(expr, bindings, line, column, errors) {
-        Some(resolved) => Some(Bool(not(value_truthy(resolved))))
+        Some(resolved) => Some(Bool(!(value_truthy(resolved))))
         None => None
       }
     And(left, right) =>
@@ -1988,7 +1988,7 @@ fn resolve_value(
         Some(resolved_left) =>
           match resolve_value(right, bindings, line, column, errors) {
             Some(resolved_right) =>
-              Some(Bool(not(value_equals(resolved_left, resolved_right))))
+              Some(Bool(!(value_equals(resolved_left, resolved_right))))
             None => None
           }
         None => None
