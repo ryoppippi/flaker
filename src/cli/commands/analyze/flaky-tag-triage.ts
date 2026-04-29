@@ -201,7 +201,7 @@ export async function runFlakyTagTriage(
     || a.testName.localeCompare(b.testName),
   );
 
-  const addCandidates = (await opts.store.queryFlakyTests({ windowDays: opts.windowDays }))
+  const addCandidates = (await opts.store.queryFlakyTests({ windowDays: opts.windowDays, now }))
     .filter((score) =>
       score.totalRuns >= opts.minRuns
       && score.flakyRate >= opts.addThresholdPercentage
