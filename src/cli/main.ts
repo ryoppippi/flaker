@@ -41,7 +41,7 @@ export function createProgram(): Command {
   program
     .name("flaker")
     .description("Intelligent test selection — run fewer tests, catch more failures")
-    .version("0.10.7")
+    .version("0.11.1")
     .showHelpAfterError()
     .showSuggestionAfterError();
 

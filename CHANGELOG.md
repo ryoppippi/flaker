@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.11.1
+
+Patch follow-up to 0.11.0 — version-string only.
+
+### Fixed
+
+- `src/cli/main.ts`: the bundled CLI's `.version("0.10.7")` string was not bumped during the 0.11.0 release, so `flaker --version` on `@mizchi/flaker@0.11.0` reported `0.10.7`. Now reports `0.11.1`.
+
+## 0.11.0
+
+Minor release — `feat:` change ships a new public adapter.
+
 ### Added
 
 - New `chaosbringer` test-result adapter: `flaker import <chaos-report.json> --adapter chaosbringer`. Maps each visited page to one TestCaseResult (`suite=chaosbringer:pages`, `testName=<pathname>`, status from `page.status` + errors, recovered → flaky), and each invariant violation to its own row (`suite=chaosbringer:invariants`, `taskId=<pathname>`). Lets the existing flaky / quarantine / KPI pipeline ingest chaos crawl signals as if they were ordinary test runs.
