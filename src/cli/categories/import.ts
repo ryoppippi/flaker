@@ -5,6 +5,7 @@ import { loadConfig } from "../config.js";
 import { runImport } from "../commands/import/report.js";
 import { runImportParquet } from "../commands/import/parquet.js";
 import { parseWorkflowRunSource } from "../run-source.js";
+import { parseTagOption, WorkflowFilterError } from "../workflow-filter.js";
 
 export function detectAdapter(filePath: string): string | undefined {
   const lower = filePath.toLowerCase();
@@ -24,7 +25,16 @@ export function registerImportCommands(program: Command): void {
     .option("--commit <sha>", "Commit SHA")
     .option("--branch <branch>", "Branch name")
     .option("--source <source>", "Workflow run source: ci or local", "local")
-    .action(async (file: string | undefined, opts: { adapter?: string; customCommand?: string; commit?: string; branch?: string; source?: string }) => {
+    .option("--workflow-name <name>", "Workflow name to attach to the imported run (used by `explain cluster --workflow`)")
+    .option("--lane <lane>", "Lane label to attach to the imported run (e.g. sampled, cohort, interaction; used by `explain cluster --lane`)")
+    .option("--tag <k=v...>", "Repeatable key=value tags attached to the imported run (used by `explain cluster --tag`)", collectTagOption, [] as string[])
+    .action(async (
+      file: string | undefined,
+      opts: {
+        adapter?: string; customCommand?: string; commit?: string; branch?: string; source?: string;
+        workflowName?: string; lane?: string; tag?: string[];
+      },
+    ) => {
       if (!file) {
         importCmd.help();
         return;
@@ -40,6 +50,16 @@ export function registerImportCommands(program: Command): void {
         await runImportParquet(file);
         return;
       }
+      let tags: Record<string, string> | undefined;
+      try {
+        tags = parseTagOption(opts.tag);
+      } catch (err) {
+        if (err instanceof WorkflowFilterError) {
+          process.stderr.write(`error: ${err.message}\n`);
+          process.exit(2);
+        }
+        throw err;
+      }
       const config = loadConfig(process.cwd());
       const store = new DuckDBStore(resolve(config.storage.path));
       await store.initialize();
@@ -53,6 +73,9 @@ export function registerImportCommands(program: Command): void {
           branch: opts.branch,
           repo: `${config.repo.owner}/${config.repo.name}`,
           source: parseWorkflowRunSource(opts.source),
+          workflowName: opts.workflowName,
+          lane: opts.lane,
+          tags,
         });
         console.log(`Imported ${result.testsImported} test results`);
       } finally {
@@ -60,4 +83,8 @@ export function registerImportCommands(program: Command): void {
       }
     });
 
+}
+
+function collectTagOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
 }
