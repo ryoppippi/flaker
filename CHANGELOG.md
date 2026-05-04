@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+## 0.12.0
+
+Minor release — `feat:` change ships a new public surface for `flaker explain cluster` plus a follow-up audit that closes the JST/UTC drift class in CURRENT_TIMESTAMP-based queries (issue #64).
+
+### Added
+
+- `flaker explain cluster --json`: structured JSON output for the failure-cluster view (#83). Mirrors the existing `--json` flag on the analyze suite so downstream tools (self-host review, dashboards) can consume cluster output without scraping the formatted text.
+
 ### Fixed
 
-- `src/cli/commands/analyze/reason.ts`, `src/cli/commands/collect/calibrate.ts`, `src/cli/commands/gate/history.ts`, `src/cli/commands/dev/train.ts`, `src/cli/categories/dev.ts`: completed the `now?: Date` audit started in #84/#85 (issue #64). Twelve more `created_at > CURRENT_TIMESTAMP - INTERVAL '... days'` cutoffs across `runReason` (`detectPatterns`, `predictRisks`), `analyzeProject`, `queryTopTests`, `runGateHistory`, `trainModel`, and the inline `dev tune` query were converted to JS-computed literal cutoffs (`'YYYY-MM-DD HH:MM:SS'::TIMESTAMP`). Callers that pin `now` (snapshot/replay tests, `bundle.ts`) now get the same window across every sub-query instead of mixing pinned and `wallclock - windowDays` cutoffs, removing the JST-vs-UTC flake class for the analyze/calibrate/gate-history/train commands.
+- `src/cli/commands/analyze/co-failure.ts`, `src/cli/commands/analyze/test-co-failure.ts`, `src/cli/commands/analyze/insights.ts`: thread `now?: Date` through CO_FAILURE / TEST_CO_FAILURE / insights queries (#84, #64 part 1). Caller-pinned `now` is now respected by the underlying SQL cutoffs.
+- `src/cli/commands/analyze/{kpi,eval,bundle}.ts`, `src/cli/commands/status/summary.ts`, `src/cli/storage/{schema,types,duckdb}.ts`: thread `now?: Date` through the remaining analyze/status/storage queries (#85, #64 part 2). About a dozen `created_at > CURRENT_TIMESTAMP - INTERVAL` cutoffs converted to JS-computed literal cutoffs.
+- `src/cli/commands/analyze/reason.ts`, `src/cli/commands/collect/calibrate.ts`, `src/cli/commands/gate/history.ts`, `src/cli/commands/dev/train.ts`, `src/cli/categories/dev.ts`: completed the audit (#86, #64 part 3). Twelve more cutoffs across `runReason` (`detectPatterns`, `predictRisks`), `analyzeProject`, `queryTopTests`, `runGateHistory`, `trainModel`, and the inline `dev tune` query were converted. After this release, `grep -rn 'CURRENT_TIMESTAMP - INTERVAL' src/` returns empty; the only remaining `CURRENT_TIMESTAMP` references are schema column DEFAULTs (INSERT-time, unaffected by JST/UTC drift). Closes #64.
 
 ## 0.11.1
 
