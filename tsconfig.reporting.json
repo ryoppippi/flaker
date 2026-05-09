@@ -13,6 +13,12 @@
     "src/cli/reporting/playwright-report-diff-core.ts",
     "src/cli/reporting/flaker-task-summary-contract.ts",
     "src/cli/reporting/flaker-task-summary-core.ts",
-    "src/cli/reporting/flaker-batch-summary-core.ts"
+    "src/cli/reporting/flaker-batch-summary-core.ts",
+    "src/cli/reporting/flaker-config-contract.ts",
+    "src/cli/reporting/flaker-config-parser.ts",
+    "src/cli/reporting/flaker-config-task.ts",
+    "src/cli/reporting/flaker-config-summary-core.ts",
+    "src/cli/reporting/flaker-config-selection-core.ts",
+    "src/cli/reporting/flaker-config-report.ts"
   ]
 }

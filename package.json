@@ -1,6 +1,6 @@
 {
   "name": "@mizchi/flaker",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Flaky test detection, sampling, and test runner orchestration",
   "type": "module",
   "bin": {
@@ -34,6 +34,30 @@
     "./reporting/flaker-batch-summary-core": {
       "types": "./dist/cli/reporting/flaker-batch-summary-core.d.ts",
       "default": "./dist/cli/reporting/flaker-batch-summary-core.js"
+    },
+    "./reporting/flaker-config-contract": {
+      "types": "./dist/cli/reporting/flaker-config-contract.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-contract.js"
+    },
+    "./reporting/flaker-config-parser": {
+      "types": "./dist/cli/reporting/flaker-config-parser.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-parser.js"
+    },
+    "./reporting/flaker-config-task": {
+      "types": "./dist/cli/reporting/flaker-config-task.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-task.js"
+    },
+    "./reporting/flaker-config-summary-core": {
+      "types": "./dist/cli/reporting/flaker-config-summary-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-summary-core.js"
+    },
+    "./reporting/flaker-config-selection-core": {
+      "types": "./dist/cli/reporting/flaker-config-selection-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-selection-core.js"
+    },
+    "./reporting/flaker-config-report": {
+      "types": "./dist/cli/reporting/flaker-config-report.d.ts",
+      "default": "./dist/cli/reporting/flaker-config-report.js"
     }
   },
   "scripts": {
