@@ -122,8 +122,15 @@ export async function prepareRunRequest(
       : resolvedProfile.strategy,
   );
   const changedFiles = resolveChangedFiles(input.cwd, input.opts.changed, detectChangedFiles);
-  const quarantineManifestEntries = input.opts.skipQuarantined
-    ? loadQuarantineManifestIfExists({ cwd: input.cwd })?.entries
+  const skipQuarantined = input.opts.skipQuarantined ?? resolvedProfile.skip_quarantined;
+  const shouldLoadQuarantineManifest = Boolean(
+    skipQuarantined || input.config.quarantine.runtime_apply,
+  );
+  const quarantineManifestEntries = shouldLoadQuarantineManifest
+    ? loadQuarantineManifestIfExists({
+      cwd: input.cwd,
+      manifestPath: input.config.quarantine.manifest,
+    })?.entries
     : undefined;
   const resolver =
     (mode === "affected" || mode === "hybrid") && changedFiles?.length
@@ -171,7 +178,7 @@ export async function prepareRunRequest(
     fallbackMode: resolveFallbackSamplingMode(resolvedProfile),
     count: parseSampleCount(input.opts.count),
     percentage,
-    skipQuarantined: input.opts.skipQuarantined ?? resolvedProfile.skip_quarantined,
+    skipQuarantined,
     skipFlakyTagged: input.opts.skipFlakyTagged ?? resolvedProfile.skip_flaky_tagged,
     changedFiles,
     coFailureDays: input.opts.coFailureDays

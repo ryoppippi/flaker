@@ -79,6 +79,41 @@ describe("prepareRunRequest", () => {
     expect(detectChangedFiles).not.toHaveBeenCalled();
   });
 
+  it("loads configured quarantine manifest when runtime apply is enabled", async () => {
+    const loadManifest = vi.fn(() => ({
+      entries: [{ id: "q-runtime" }],
+    }));
+
+    const prepared = await prepareRunRequest({
+      cwd: "/repo",
+      config: {
+        ...baseConfig,
+        quarantine: {
+          ...baseConfig.quarantine,
+          manifest: "/repo/flaker-quarantine.json",
+          runtime_apply: true,
+        },
+      },
+      store: {} as MetricStore,
+      opts: {
+        gate: "merge",
+        strategy: "full",
+      },
+      deps: {
+        loadQuarantineManifestIfExists: loadManifest,
+        computeKpi: async () => ({ sampling: { falseNegativeRate: null } }),
+        runInsights: async () => ({ summary: { totalTests: 0, ciOnlyCount: 0 } }),
+      },
+    });
+
+    expect(loadManifest).toHaveBeenCalledWith({
+      cwd: "/repo",
+      manifestPath: "/repo/flaker-quarantine.json",
+    });
+    expect(prepared.skipQuarantined).toBeUndefined();
+    expect(prepared.quarantineManifestEntries).toEqual([{ id: "q-runtime" }]);
+  });
+
   it("applies adaptive percentage and exposes notes for display", async () => {
     const computeKpi = vi.fn(async () => ({
       sampling: { falseNegativeRate: 0.01 },

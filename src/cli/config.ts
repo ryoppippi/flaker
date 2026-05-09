@@ -77,7 +77,14 @@ export interface FlakerConfig {
     actrun?: { workflow?: string; job?: string; local?: boolean; trust?: boolean };
   };
   affected: { resolver: string; config: string };
-  quarantine: { auto: boolean; flaky_rate_threshold_percentage: number; min_runs: number };
+  quarantine: {
+    auto: boolean;
+    flaky_rate_threshold_percentage: number;
+    min_runs: number;
+    manifest?: string;
+    task_id?: string;
+    runtime_apply?: boolean;
+  };
   flaky: { window_days: number; detection_threshold_ratio: number };
   coverage?: CoverageConfig;
   sampling?: SamplingConfig;
