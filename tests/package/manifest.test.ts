@@ -13,7 +13,7 @@ describe("package manifest", () => {
 
     expect(manifest.bin?.flaker).toBe("./dist/cli/main.js");
     expect(manifest.files).toEqual([
-      "dist/cli/main.js",
+      "dist/cli/**",
       "dist/moonbit/flaker.js",
     ]);
   });
