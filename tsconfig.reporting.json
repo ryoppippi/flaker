@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": false
+  },
+  "files": [
+    "src/cli/reporting/stable-test-identity.ts",
+    "src/cli/reporting/playwright-report-contract.ts",
+    "src/cli/reporting/playwright-report-summary-core.ts",
+    "src/cli/reporting/playwright-report-diff-core.ts",
+    "src/cli/reporting/flaker-task-summary-contract.ts",
+    "src/cli/reporting/flaker-task-summary-core.ts",
+    "src/cli/reporting/flaker-batch-summary-core.ts"
+  ]
+}

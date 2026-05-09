@@ -47,6 +47,8 @@ await build({
   },
 });
 
+run("tsc", ["--project", "tsconfig.reporting.json"]);
+
 mkdirSync(dirname(bridgeOutputFile), { recursive: true });
 copyFileSync(releaseBridgeFile, bridgeOutputFile);
 chmodSync(cliOutputFile, 0o755);

@@ -6,6 +6,36 @@
   "bin": {
     "flaker": "./dist/cli/main.js"
   },
+  "exports": {
+    "./reporting/stable-test-identity": {
+      "types": "./dist/cli/reporting/stable-test-identity.d.ts",
+      "default": "./dist/cli/reporting/stable-test-identity.js"
+    },
+    "./reporting/playwright-report-contract": {
+      "types": "./dist/cli/reporting/playwright-report-contract.d.ts",
+      "default": "./dist/cli/reporting/playwright-report-contract.js"
+    },
+    "./reporting/playwright-report-summary-core": {
+      "types": "./dist/cli/reporting/playwright-report-summary-core.d.ts",
+      "default": "./dist/cli/reporting/playwright-report-summary-core.js"
+    },
+    "./reporting/playwright-report-diff-core": {
+      "types": "./dist/cli/reporting/playwright-report-diff-core.d.ts",
+      "default": "./dist/cli/reporting/playwright-report-diff-core.js"
+    },
+    "./reporting/flaker-task-summary-contract": {
+      "types": "./dist/cli/reporting/flaker-task-summary-contract.d.ts",
+      "default": "./dist/cli/reporting/flaker-task-summary-contract.js"
+    },
+    "./reporting/flaker-task-summary-core": {
+      "types": "./dist/cli/reporting/flaker-task-summary-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-task-summary-core.js"
+    },
+    "./reporting/flaker-batch-summary-core": {
+      "types": "./dist/cli/reporting/flaker-batch-summary-core.d.ts",
+      "default": "./dist/cli/reporting/flaker-batch-summary-core.js"
+    }
+  },
   "scripts": {
     "build": "node ./scripts/build-package.mjs",
     "build:package": "node ./scripts/build-package.mjs",
@@ -29,7 +59,7 @@
     "url": "https://github.com/mizchi/flaker/issues"
   },
   "files": [
-    "dist/cli/main.js",
+    "dist/cli/**",
     "dist/moonbit/flaker.js"
   ],
   "publishConfig": {
